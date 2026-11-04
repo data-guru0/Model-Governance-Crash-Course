@@ -1,0 +1,4 @@
+.git
+.env
+reports/
+__pycache__/

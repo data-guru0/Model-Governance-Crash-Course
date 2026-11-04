@@ -260,10 +260,10 @@ def next_rollout_step(approver: str, role: str) -> dict:
 
 
 def rollback(actor: str, reason: str, checks: list[dict] | None = None) -> None:
-    """Revert the production route to 100% champion and log an incident."""
+    """Revert the production route to 100% of the current champion and log an incident."""
     lc = core.lifecycle()
     before = core.current_weights()
-    after = core.set_traffic(0)
+    after = core.set_traffic(0, champion=lc.get("champion", "v1"))
     core.set_lifecycle(stage="rolled_back", v2_weight=0, shadow=False, rolled_back_from=lc["stage"],
                        rollback_reason=reason, window=_new_window("rolled_back"))
     core.audit(actor, lc["stage"], "INCIDENT_auto_rollback" if actor == "governance-worker" else "rollback",

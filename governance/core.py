@@ -256,8 +256,8 @@ def current_weights() -> dict[str, int]:
     return weights
 
 
-def set_traffic(v2_percent: int, shadow: bool = False, champion: str = "v1") -> dict[str, int]:
-    """Point the production route at the champion/challenger with the given split.
+def set_traffic(challenger_percent: int, shadow: bool = False, champion: str = "v1") -> dict[str, int]:
+    """Send `challenger_percent` of production traffic to the challenger, the rest to the champion.
 
     New deployments are added first and the old ones removed afterwards, so the route is never
     empty. With shadow=True the champion deployment mirrors every request to the challenger
@@ -265,7 +265,7 @@ def set_traffic(v2_percent: int, shadow: bool = False, champion: str = "v1") -> 
     route = policy()["registry"]["production_route"]
     challenger = "v2" if champion == "v1" else "v1"
     old_ids = [d["model_info"]["id"] for d in production_deployments()]
-    split = {champion: 100 - v2_percent, challenger: v2_percent}
+    split = {champion: 100 - challenger_percent, challenger: challenger_percent}
     for version, weight in split.items():
         if weight <= 0:
             continue
