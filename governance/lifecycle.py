@@ -181,22 +181,7 @@ def decide_proposal(approver: str, role: str, approve: bool, comment: str) -> No
                {"proposal_sha": _sha(PROPOSAL_FILE)})
 
 
-# --------------------------------------------------------------------------- Stage 0/2 (jobs)
-def job_baseline_eval(job_id: int, actor: str) -> dict:
-    """Evaluate the current champion on the golden set when the baseline is established.
-    In real life this evidence exists from the champion's own approval; here it also means the
-    Stage 2 click only has to score the challenger."""
-    from evaluation.run_eval import run_evaluation
-
-    champion = core.lifecycle().get("champion", "v1")
-    result = run_evaluation(champion, "baseline-eval", actor, job_id)
-    if not core.get_state(f"reference_eval.{champion}"):
-        core.set_state(f"reference_eval.{champion}", result)
-    core.audit(actor, "baseline", "baseline_evaluated", None, {"champion": champion, "run_id": result["run_id"]},
-               {"mlflow_run": result["run_id"]})
-    return {"run_id": result["run_id"], "overall": result["overall"]}
-
-
+# --------------------------------------------------------------------------- Stage 2 (job)
 def job_offline_eval(job_id: int, actor: str) -> dict:
     from evaluation.run_eval import offline_gate, run_evaluation
 

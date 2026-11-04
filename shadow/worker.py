@@ -65,8 +65,6 @@ def run_jobs_forever() -> None:
             p = job["params"]
             if job["kind"] == "offline_eval":
                 result = lifecycle.job_offline_eval(job["id"], job["actor"])
-            elif job["kind"] == "baseline_eval":
-                result = lifecycle.job_baseline_eval(job["id"], job["actor"])
             elif job["kind"] == "replay":
                 result = lifecycle.job_replay(job["id"], int(p["count"]), job["actor"], int(p.get("simulated", 0)))
             elif job["kind"] == "drift":
@@ -182,9 +180,6 @@ def main() -> None:
         except Exception as exc:  # noqa: BLE001
             print(f"bootstrap waiting for services: {exc}")
             time.sleep(10)
-    if not core.query("""SELECT 1 FROM governance.jobs WHERE kind = 'baseline_eval'
-                         AND status IN ('queued', 'running', 'done')"""):
-        core.enqueue("baseline_eval", {}, ACTOR)  # champion baseline evidence, runs during Stages 0-1
     threading.Thread(target=run_jobs_forever, daemon=True).start()
     last_gate = 0.0
     print("governance worker running")
