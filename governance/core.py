@@ -33,9 +33,21 @@ APP_URL = os.environ.get("APP_URL", "http://localhost:8000")
 
 
 # --------------------------------------------------------------------------- config
+_yaml_cache: dict[Path, tuple[float, Any]] = {}
+
+
+def _load_yaml(path: Path) -> Any:
+    """Parse a YAML file, re-parsing only when it changes on disk (edits still apply immediately)."""
+    mtime = path.stat().st_mtime
+    cached = _yaml_cache.get(path)
+    if not cached or cached[0] != mtime:
+        cached = _yaml_cache[path] = (mtime, yaml.safe_load(path.read_text(encoding="utf-8")))
+    return cached[1]
+
+
 def policy() -> dict:
-    """Current governance policy. Re-read on every call so threshold edits apply immediately."""
-    return yaml.safe_load(POLICY_FILE.read_text(encoding="utf-8"))
+    """Current governance policy, as it is on disk right now."""
+    return _load_yaml(POLICY_FILE)
 
 
 def policy_fingerprint() -> str:
@@ -50,8 +62,7 @@ def system_prompt_text() -> str:
 
 def route_params(route: str) -> dict:
     """litellm_params of a fixed route (nova-v1 / nova-v2 / nova-judge) from litellm_config.yaml."""
-    cfg = yaml.safe_load(LITELLM_CONFIG_FILE.read_text(encoding="utf-8"))
-    for m in cfg["model_list"]:
+    for m in _load_yaml(LITELLM_CONFIG_FILE)["model_list"]:
         if m["model_name"] == route:
             return dict(m["litellm_params"])
     raise KeyError(f"route {route!r} not in litellm_config.yaml")
@@ -116,7 +127,8 @@ def set_state(key: str, value: Any) -> None:
 
 
 def lifecycle() -> dict:
-    return get_state("lifecycle", {"stage": "not_initialised", "v2_weight": 0, "shadow": False})
+    return get_state("lifecycle", {"stage": "not_initialised", "champion": "v1", "challenger": None,
+                                   "challenger_weight": 0, "shadow": False})
 
 
 def set_lifecycle(**changes: Any) -> dict:
@@ -248,24 +260,31 @@ def production_deployments() -> list[dict]:
 
 
 def current_weights() -> dict[str, int]:
-    weights = {"v1": 0, "v2": 0}
+    """{version: % of production traffic} for the champion, the challenger and anything routed."""
+    lc = lifecycle()
+    weights = {v: 0 for v in (lc.get("champion", "v1"), lc.get("challenger")) if v}
     for d in production_deployments():
         v = (d.get("model_info") or {}).get("nova_version")
-        if v in weights:
+        if v:
             weights[v] = int(d["litellm_params"].get("weight") or 0)
     return weights
 
 
-def set_traffic(challenger_percent: int, shadow: bool = False, champion: str = "v1") -> dict[str, int]:
+def set_traffic(challenger_percent: int, shadow: bool = False, champion: str | None = None,
+                challenger: str | None = None) -> dict[str, int]:
     """Send `challenger_percent` of production traffic to the challenger, the rest to the champion.
 
     New deployments are added first and the old ones removed afterwards, so the route is never
     empty. With shadow=True the champion deployment mirrors every request to the challenger
     route via LiteLLM's native `silent_model` (the user only ever gets the champion answer)."""
     route = policy()["registry"]["production_route"]
-    challenger = "v2" if champion == "v1" else "v1"
+    lc = lifecycle()
+    champion = champion or lc.get("champion", "v1")
+    challenger = challenger or lc.get("challenger")
+    if (challenger_percent or shadow) and not challenger:
+        raise ValueError("no challenger selected")
     old_ids = [d["model_info"]["id"] for d in production_deployments()]
-    split = {champion: 100 - challenger_percent, challenger: challenger_percent}
+    split = {champion: 100 - challenger_percent, **({challenger: challenger_percent} if challenger else {})}
     for version, weight in split.items():
         if weight <= 0:
             continue
@@ -292,7 +311,9 @@ def ensure_virtual_key(alias: str, models: list[str], limits: dict) -> str:
     keys = get_state("virtual_keys", {})
     if alias in keys:
         try:
-            admin("GET", "/key/info", params={"key": keys[alias]})
+            info = admin("GET", "/key/info", params={"key": keys[alias]})["info"]
+            if sorted(info.get("models") or []) != sorted(models):  # routes added (e.g. a new candidate)
+                admin("POST", "/key/update", json={"key": keys[alias], "models": models})
             return keys[alias]
         except httpx.HTTPStatusError:
             pass  # key vanished (e.g. LiteLLM DB was reset): issue a new one
@@ -306,12 +327,12 @@ def ensure_virtual_key(alias: str, models: list[str], limits: dict) -> str:
 
 def app_key() -> str:
     return ensure_virtual_key("nova-assist-app", [policy()["registry"]["production_route"],
-                                                  "nova-v1", "nova-v2"],
+                                                  "nova-v1", "nova-v2", "nova-v3"],
                               policy()["rate_limits"]["app_key"])
 
 
 def worker_key() -> str:
-    return ensure_virtual_key("governance-worker", ["nova-v1", "nova-v2", "nova-judge"],
+    return ensure_virtual_key("governance-worker", ["nova-v1", "nova-v2", "nova-v3", "nova-judge"],
                               policy()["rate_limits"]["worker_key"])
 
 

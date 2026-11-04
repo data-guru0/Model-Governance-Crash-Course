@@ -90,6 +90,8 @@ def state() -> dict:
     pol = core.policy()
     prompt = core.get_state("prompt") or {}
     deployments = core.admin("GET", "/model/info")["data"]
+    proposal = lifecycle.load_proposal()
+    ev = core.get_state("offline_eval") or {}
     return {
         "lifecycle": core.lifecycle(),
         "weights": core.current_weights(),
@@ -103,8 +105,49 @@ def state() -> dict:
                     "weight": d["litellm_params"].get("weight"), "silent_model": d["litellm_params"].get("silent_model"),
                     "version": d["model_info"].get("nova_version"), "db_model": bool(d["model_info"].get("db_model"))}
                    for d in deployments],
-        "models": {r: core.route_params(r)["model"] for r in ("nova-v1", "nova-v2", "nova-judge")},
+        "models": {r: core.route_params(r)["model"] for r in ("nova-v1", "nova-v2", "nova-v3", "nova-judge")},
+        "codenames": {proposal["current_champion"]["nova_version"]: proposal["current_champion"]["codename"],
+                      **{c["version"]: c["codename"] for c in proposal["candidates"]}},
+        "candidates": {v: c["passed"] for v, c in (ev.get("candidates") or {}).items()},
+        "selected": ev.get("selected"),
     }
+
+
+@app.get("/api/story")
+def story() -> dict:
+    """The classroom calendar: which week each stage happens in, with dates from the story start."""
+    from datetime import date, timedelta
+
+    lc = core.lifecycle()
+    start = date.fromisoformat(lc.get("story_start") or core.now().date().isoformat())
+    start -= timedelta(days=start.weekday())  # weeks start on Monday
+    weeks = core.policy()["story"]["weeks"]
+    chapters = [("proposal", "Proposal & evaluation", ["s1", "s2", "s3"]), ("shadow", "Shadow week", ["s4"]),
+                ("canary", "Canary week", ["s5"]), ("rollout_25", "Rollout 25%", ["s6"]),
+                ("rollout_50", "Rollout 50%", ["s6"]), ("rollout_100", "Rollout 100%", ["s6"]),
+                ("promotion", "Promotion", ["s7"])]
+    out = []
+    for key, label, pages in chapters:
+        w = weeks[key]
+        d0 = start + timedelta(weeks=w - 1) if w else start
+        out.append({"key": key, "label": label, "week": w, "pages": pages,
+                    "from": d0.isoformat(), "to": (d0 + timedelta(days=6)).isoformat()})
+    return {"start": start.isoformat(), "current_week": simulate.story_week(lc["stage"]), "chapters": out,
+            "weekly_requests": core.policy()["story"]["weekly_requests"]}
+
+
+@app.get("/api/daily")
+def daily() -> list[dict]:
+    """Day-by-day metrics per version for the current traffic window (simulated week + real calls)."""
+    lc = core.lifecycle()
+    win = lc["window"] if lc["stage"] != "shadow_passed" else lc.get("shadow_window", lc["window"])
+    return core.query("""SELECT story_day AS day, model_version AS version, COUNT(*) AS requests,
+                                AVG((error IS NOT NULL)::int) AS error_rate,
+                                percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms)
+                                    FILTER (WHERE error IS NULL) AS p95_latency_ms,
+                                AVG(quality_score) AS quality
+                         FROM governance.requests WHERE stage = %s AND story_day IS NOT NULL
+                         GROUP BY story_day, model_version ORDER BY story_day""", (win,))
 
 
 @app.get("/api/usage")
@@ -116,9 +159,9 @@ def usage() -> list[dict]:
 
 @app.post("/api/live-check")
 def live_check() -> list[dict]:
-    """One tiny real call per route (3 Groq calls)."""
+    """One tiny real call per route (4 Groq calls)."""
     out = []
-    for route in ("nova-v1", "nova-v2", "nova-judge"):
+    for route in ("nova-v1", "nova-v2", "nova-v3", "nova-judge"):
         try:
             r = core.chat(route, [{"role": "user", "content": "Reply with the word OK."}], core.MASTER_KEY,
                           {"tags": ["health-check"]}, 0, 200)
@@ -161,8 +204,10 @@ def reset(a: Actor) -> dict:
 
 @app.get("/api/proposal")
 def proposal() -> dict:
-    return {"proposal": lifecycle.load_proposal(), "model_card": lifecycle.MODEL_CARD_FILE.read_text(encoding="utf-8"),
-            "raw": lifecycle.PROPOSAL_FILE.read_text(encoding="utf-8")}
+    p = lifecycle.load_proposal()
+    return {"proposal": p, "raw": lifecycle.PROPOSAL_FILE.read_text(encoding="utf-8"),
+            "model_cards": {c["version"]: lifecycle.model_card_file(c["version"]).read_text(encoding="utf-8")
+                            for c in p["candidates"]}}
 
 
 @app.post("/api/proposal/submit")

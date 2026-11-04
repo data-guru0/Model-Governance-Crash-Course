@@ -52,12 +52,18 @@ def generate(actor: str) -> str:
                  ["version", "aliases", "nova_version", "status", "provider_model", "eval_run"])]
 
     md.append("## 3. Offline evaluation")
+    if ev.get("candidates"):
+        md.append(_table([{"candidate": v, "gate": "PASS" if c["passed"] else "FAIL",
+                           "failed checks": ", ".join(x["check"] for x in c["checks"] if not x["passed"]) or "-",
+                           "MLflow run": c["result"]["run_id"]} for v, c in ev["candidates"].items()],
+                         ["candidate", "gate", "failed checks", "MLflow run"]))
+        md.append(f"Selected challenger: **{ev.get('selected') or 'none'}**\n")
     if ev:
         ch, cp = ev["challenger"]["overall"], ev["champion"]["overall"]
         md.append(f"Dataset `{ev['challenger']['dataset_version']}` (profile `{ev['challenger']['profile']}`), "
                   f"MLflow runs: champion `{ev['champion']['run_id']}`, challenger `{ev['challenger']['run_id']}`.\n")
-        md.append(_table([{"metric": k, "v1 (champion)": _fmt(cp.get(k)), "v2 (challenger)": _fmt(ch.get(k))}
-                          for k in ch], ["metric", "v1 (champion)", "v2 (challenger)"]))
+        md.append(_table([{"metric": k, "champion": _fmt(cp.get(k)), "selected challenger": _fmt(ch.get(k))}
+                          for k in ch], ["metric", "champion", "selected challenger"]))
         md.append(f"Gate: **{'PASS' if ev['passed'] else 'FAIL'}**\n")
         md.append(_table(ev["checks"], ["check", "value", "rule", "passed"]))
     else:

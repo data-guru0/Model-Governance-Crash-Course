@@ -19,8 +19,11 @@ from mlflow import MlflowClient
 
 from governance import core, simulate
 
-PROPOSAL_FILE = core.ROOT / "proposals" / "nova-assist-v2.yaml"
-MODEL_CARD_FILE = core.ROOT / "proposals" / "model-card-nova-assist-v2.md"
+PROPOSAL_FILE = core.ROOT / "proposals" / "nova-assist-upgrade.yaml"
+
+
+def model_card_file(version: str):
+    return core.ROOT / "proposals" / f"model-card-{version}.md"
 LIVE_STAGES = ("canary", "rollout_25", "rollout_50", "rollout_100")
 
 
@@ -140,14 +143,14 @@ def bootstrap(actor: str = "system") -> dict:
                                                "Aliases: @champion serves production, @challenger is under evaluation.")
         core.audit(actor, "baseline", "model_registered", "champion", {"version": mv, "nova_version": "v1"})
     deployments = core.production_deployments()
-    clean_baseline = (core.current_weights() == {"v1": 100, "v2": 0}
+    clean_baseline = (core.current_weights().get("v1") == 100 and len(deployments) == 1
                       and not any(d["litellm_params"].get("silent_model") for d in deployments))
     if core.lifecycle()["stage"] in ("not_initialised", "baseline") and not clean_baseline:
         core.set_traffic(0)
     core.refresh_deployment_versions()
     if core.lifecycle()["stage"] == "not_initialised":
-        core.set_lifecycle(stage="baseline", v2_weight=0, shadow=False, champion="v1",
-                           window=_new_window("baseline"))
+        core.set_lifecycle(stage="baseline", challenger_weight=0, shadow=False, champion="v1", challenger=None,
+                           window=_new_window("baseline"), story_start=core.now().date().isoformat())
         core.audit(actor, "baseline", "baseline_established", None,
                    {"champion": "v1", "weights": core.current_weights()})
     return core.lifecycle()
@@ -164,8 +167,9 @@ def submit_proposal(actor: str) -> None:
     core.set_lifecycle(stage="proposal_submitted")
     core.audit(actor, "proposal", "proposal_submitted", None,
                {"proposal_id": p["id"], "risk_tier": p["risk"]["tier"]},
-               {"proposal_file": "proposals/nova-assist-v2.yaml", "proposal_sha": _sha(PROPOSAL_FILE),
-                "model_card": "proposals/model-card-nova-assist-v2.md", "model_card_sha": _sha(MODEL_CARD_FILE)})
+               {"proposal_file": "proposals/nova-assist-upgrade.yaml", "proposal_sha": _sha(PROPOSAL_FILE),
+                "candidates": [c["version"] for c in p["candidates"]],
+                "model_card_sha": {c["version"]: _sha(model_card_file(c["version"])) for c in p["candidates"]}})
 
 
 def decide_proposal(approver: str, role: str, approve: bool, comment: str) -> None:
@@ -177,8 +181,9 @@ def decide_proposal(approver: str, role: str, approve: bool, comment: str) -> No
     core.set_lifecycle(stage="proposal_approved" if approve else "proposal_rejected",
                        proposal_approver=f"{approver} ({role})")
     name = _cfg()["model_name"]
-    for k, v in {"proposal.v2.status": decision.lower(), "proposal.v2.approver": f"{approver} ({role})",
-                 "proposal.v2.sha": _sha(PROPOSAL_FILE)}.items():
+    pid = load_proposal()["id"]
+    for k, v in {f"proposal.{pid}.status": decision.lower(), f"proposal.{pid}.approver": f"{approver} ({role})",
+                 f"proposal.{pid}.sha": _sha(PROPOSAL_FILE)}.items():
         client().set_registered_model_tag(name, k, v)
     core.audit(f"{approver} ({role})", "proposal", "proposal_decision", decision,
                {"comment": comment, "proposal_id": load_proposal()["id"]},
@@ -187,29 +192,48 @@ def decide_proposal(approver: str, role: str, approve: bool, comment: str) -> No
 
 # --------------------------------------------------------------------------- Stage 2 (job)
 def job_offline_eval(job_id: int, actor: str) -> dict:
+    """Evaluate the champion and EVERY proposed candidate on the same examples, gate each candidate,
+    and select the best passing one as the challenger (policy.yaml evaluation.selection)."""
     from evaluation.run_eval import offline_gate, run_evaluation
 
     require_stage("proposal_approved", "offline_failed", "offline_evaluating")
     core.set_lifecycle(stage="offline_evaluating")
+    champion_v = core.lifecycle().get("champion", "v1")
+    live = core.policy()["evaluation"]["live_examples"]
     try:
-        champion = run_evaluation("v1", "offline-eval", actor, job_id)
-        # The live sample: a few real answers + real judge calls for the challenger (see policy.yaml).
-        challenger = run_evaluation("v2", "offline-eval", actor, job_id,
-                                    live_ids=core.policy()["evaluation"]["live_examples"])
+        champion = run_evaluation(champion_v, "offline-eval", actor, job_id)
+        results = {c["version"]: run_evaluation(c["version"], "offline-eval", actor, job_id, live_ids=live)
+                   for c in load_proposal()["candidates"]}
     except Exception:
         core.set_lifecycle(stage="proposal_approved")  # evidence incomplete: no decision, can resume
         raise
-    checks = offline_gate(challenger, champion)
-    evidence = {"champion_run": champion["run_id"], "challenger_run": challenger["run_id"],
-                "dataset_version": challenger["dataset_version"], "profile": challenger["profile"]}
-    passed = core.record_gate("offline_evaluation", checks, evidence, actor)
-    core.set_state("offline_eval", {"champion": champion, "challenger": challenger, "checks": checks,
-                                    "passed": passed, "ts": core.now().isoformat()})
-    if not core.get_state("reference_eval.v1"):
-        core.set_state("reference_eval.v1", champion)  # first champion evaluation = drift reference
-    core.set_lifecycle(stage="offline_passed" if passed else "offline_failed")
-    client().set_tag(challenger["run_id"], "gate", "PASS" if passed else "FAIL")
-    return {"passed": passed, "checks": checks, **evidence}
+    candidates = {}
+    for v, res in results.items():
+        checks = offline_gate(res, champion)
+        passed = core.record_gate("offline_evaluation", checks,
+                                  {"candidate": v, "champion_run": champion["run_id"], "candidate_run": res["run_id"],
+                                   "dataset_version": res["dataset_version"], "profile": res["profile"]}, actor)
+        client().set_tag(res["run_id"], "gate", "PASS" if passed else "FAIL")
+        candidates[v] = {"result": res, "checks": checks, "passed": passed}
+        if not passed:
+            core.audit(actor, "offline_evaluation", "candidate_rejected", "REJECTED",
+                       {"candidate": v, "failed_checks": [c["check"] for c in checks if not c["passed"]]},
+                       {"candidate_run": res["run_id"]})
+    sel = core.policy()["evaluation"]["selection"]
+    passing = [v for v, c in candidates.items() if c["passed"]]
+    selected = max(passing, key=lambda v: tuple(results[v]["overall"][m] for m in sel)) if passing else None
+    best = selected or max(candidates, key=lambda v: sum(c["passed"] for c in candidates[v]["checks"]))
+    core.set_state("offline_eval", {"champion": champion, "candidates": candidates, "selected": selected,
+                                    "challenger": results[best], "checks": candidates[best]["checks"],
+                                    "passed": bool(selected), "ts": core.now().isoformat()})
+    if not core.get_state(f"reference_eval.{champion_v}"):
+        core.set_state(f"reference_eval.{champion_v}", champion)  # first champion evaluation = drift reference
+    core.set_lifecycle(stage="offline_passed" if selected else "offline_failed", challenger=selected)
+    if selected:
+        core.audit(actor, "offline_evaluation", "challenger_selected", selected,
+                   {"selected": selected, "rule": f"best passing candidate by {', '.join(sel)}",
+                    "passing": passing, "rejected": [v for v in candidates if v not in passing]})
+    return {"selected": selected, "passed": {v: c["passed"] for v, c in candidates.items()}}
 
 
 # --------------------------------------------------------------------------- Stage 3
@@ -217,28 +241,30 @@ def register_challenger(actor: str) -> str:
     require_stage("offline_passed")
     ev = core.get_state("offline_eval")
     lc = core.lifecycle()
-    mv = register_version("v2", {
-        "status": "challenger", "eval_run_id": ev["challenger"]["run_id"],
-        "eval_gate": "PASS", "proposal": "proposals/nova-assist-v2.yaml", "proposal_sha": _sha(PROPOSAL_FILE),
-        "model_card": "proposals/model-card-nova-assist-v2.md", "model_card_sha": _sha(MODEL_CARD_FILE),
+    v = lc["challenger"]
+    card = model_card_file(v)
+    mv = register_version(v, {
+        "status": "challenger", "eval_run_id": ev["candidates"][v]["result"]["run_id"],
+        "eval_gate": "PASS", "proposal": "proposals/nova-assist-upgrade.yaml", "proposal_sha": _sha(PROPOSAL_FILE),
+        "model_card": f"proposals/{card.name}", "model_card_sha": _sha(card),
         "approved_by": lc.get("proposal_approver", "unknown")}, actor)
     client().set_registered_model_alias(_cfg()["model_name"], "challenger", mv)
-    client().log_artifact(client().get_model_version(_cfg()["model_name"], mv).run_id, str(MODEL_CARD_FILE))
+    client().log_artifact(client().get_model_version(_cfg()["model_name"], mv).run_id, str(card))
     core.set_lifecycle(stage="challenger_registered", challenger_registry_version=mv)
     core.audit(actor, "registration", "challenger_registered", "@challenger",
-               {"registry_version": mv, "nova_version": "v2"},
-               {"eval_run_id": ev["challenger"]["run_id"], "proposal_sha": _sha(PROPOSAL_FILE)})
+               {"registry_version": mv, "nova_version": v},
+               {"eval_run_id": ev["candidates"][v]["result"]["run_id"], "proposal_sha": _sha(PROPOSAL_FILE)})
     return mv
 
 
 # --------------------------------------------------------------------------- traffic changes
-def change_traffic(stage: str, v2_percent: int, shadow: bool, approver: str, role: str, reason: str) -> dict:
+def change_traffic(stage: str, percent: int, shadow: bool, approver: str, role: str, reason: str) -> dict:
     """Governed action: edit the gateway's production route (weights / mirroring) + audit it."""
     require_role("traffic_change", role)
     before = core.current_weights()
-    after = core.set_traffic(v2_percent, shadow=shadow)
+    after = core.set_traffic(percent, shadow=shadow)
     window = _new_window(stage)
-    core.set_lifecycle(stage=stage, v2_weight=v2_percent, shadow=shadow, window=window,
+    core.set_lifecycle(stage=stage, challenger_weight=percent, shadow=shadow, window=window,
                        window_started=core.now().isoformat())
     core.audit(f"{approver} ({role})", stage, "traffic_change", "APPROVED",
                {"before": before, "after": after, "shadow_mirroring": shadow, "reason": reason, "window": window})
@@ -248,7 +274,7 @@ def change_traffic(stage: str, v2_percent: int, shadow: bool, approver: str, rol
 def start_shadow(approver: str, role: str) -> dict:
     require_stage("challenger_registered", "shadow_failed", "shadow")
     return change_traffic("shadow", 0, True, approver, role,
-                          "Start shadow (new window): mirror 100% of traffic to v2 silently")
+                          f"Start shadow (new window): mirror 100% of traffic to {core.lifecycle()['challenger']} silently")
 
 
 def review_violation(pair_id: int, reviewer: str, role: str, confirm: bool, note: str) -> None:
@@ -272,15 +298,17 @@ def start_canary(approver: str, role: str) -> dict:
     if core.lifecycle()["stage"] == "rolled_back" and not core.get_state("shadow_passed_once"):
         raise GovernanceError("Shadow gate has not passed yet.")
     pct = core.policy()["canary"]["weight_percent"]
-    return change_traffic("canary", pct, False, approver, role, f"Canary: {pct}% of live traffic to v2")
+    return change_traffic("canary", pct, False, approver, role,
+                          f"Canary: {pct}% of live traffic to {core.lifecycle()['challenger']}")
 
 
 def next_rollout_step(approver: str, role: str) -> dict:
     lc = require_stage("canary_passed", "rollout_25_passed", "rollout_50_passed")
     steps = core.policy()["rollout"]["steps"]
-    current = lc["v2_weight"]
+    current = lc["challenger_weight"]
     nxt = next(s for s in steps if s > current)
-    return change_traffic(f"rollout_{nxt}", nxt, False, approver, role, f"Rollout step: {nxt}% to v2")
+    return change_traffic(f"rollout_{nxt}", nxt, False, approver, role,
+                          f"Rollout step: {nxt}% to {core.lifecycle()['challenger']}")
 
 
 def rollback(actor: str, reason: str, checks: list[dict] | None = None) -> None:
@@ -288,7 +316,7 @@ def rollback(actor: str, reason: str, checks: list[dict] | None = None) -> None:
     lc = core.lifecycle()
     before = core.current_weights()
     after = core.set_traffic(0, champion=lc.get("champion", "v1"))
-    core.set_lifecycle(stage="rolled_back", v2_weight=0, shadow=False, rolled_back_from=lc["stage"],
+    core.set_lifecycle(stage="rolled_back", challenger_weight=0, shadow=False, rolled_back_from=lc["stage"],
                        rollback_reason=reason, window=_new_window("rolled_back"))
     core.audit(actor, lc["stage"], "INCIDENT_auto_rollback" if actor == "governance-worker" else "rollback",
                "ROLLED_BACK", {"reason": reason, "failed_checks": [c for c in (checks or []) if not c["passed"]],
@@ -395,8 +423,9 @@ def live_stats(window: str) -> dict:
                            WHERE model_group = %s AND status <> 'success' AND request_tags::jsonb ? %s
                            GROUP BY model""", (_cfg()["production_route"], f"stage:{window}"),
                         conn_factory=core.litellm_db)
+    lc = core.lifecycle()
     out = {}
-    for v in ("v1", "v2"):
+    for v in [x for x in (lc.get("champion", "v1"), lc.get("challenger")) if x]:
         provider = core.route_params(core.route_for(v))["model"]
         rows = [r for r in reqs if r["model_version"] == v]
         ok = [r for r in rows if not r["error"]]
@@ -418,22 +447,25 @@ def live_checks(window: str) -> tuple[list[dict], dict, bool]:
     """Returns (checks, stats, enough_data). Without enough data there is no decision yet."""
     g = core.policy()["live_gate"]
     s = live_stats(window)
-    v1, v2 = s["v1"], s["v2"]
+    lc = core.lifecycle()
+    if not lc.get("challenger"):
+        return [], s, False  # nothing to compare yet (before a challenger is selected)
+    v1, v2 = s[lc.get("champion", "v1")], s[lc["challenger"]]
     ratio = lambda a, b: (a / b) if (a is not None and b) else None  # noqa: E731
     checks = [core.check("challenger_requests", v2["requests"], {"min": g["min_challenger_requests"]}),
               core.check("challenger_judged_samples", v2["judged"], {"min": g["min_judged_samples"]}),
               core.check("challenger_error_rate", v2["error_rate"], {"max": g["max_error_rate"]}),
-              core.check("p95_latency_ratio_v2_over_v1", ratio(v2["p95_latency_ms"], v1["p95_latency_ms"]),
+              core.check("p95_latency_ratio_challenger_over_champion", ratio(v2["p95_latency_ms"], v1["p95_latency_ms"]),
                          {"max": g["max_p95_latency_ratio"]}),
-              core.check("cost_ratio_v2_over_v1", ratio(v2["cost_per_request_usd"], v1["cost_per_request_usd"]),
+              core.check("cost_ratio_challenger_over_champion", ratio(v2["cost_per_request_usd"], v1["cost_per_request_usd"]),
                          {"max": g["max_cost_ratio"]}),
               core.check("challenger_sampled_quality", v2["quality"], {"min": g["min_quality"]})]
     if v1["requests"] == 0 and v2["requests"] >= g["min_challenger_requests"]:
         # At 100% there is no champion traffic in the window; compare against the canary window's champion.
         ref = core.lifecycle().get("champion_reference") or {}
-        checks[3] = core.check("p95_latency_ratio_v2_over_v1 (vs canary champion)",
+        checks[3] = core.check("p95_latency_ratio_challenger_over_champion (vs canary champion)",
                                ratio(v2["p95_latency_ms"], ref.get("p95_latency_ms")), {"max": g["max_p95_latency_ratio"]})
-        checks[4] = core.check("cost_ratio_v2_over_v1 (vs canary champion)",
+        checks[4] = core.check("cost_ratio_challenger_over_champion (vs canary champion)",
                                ratio(v2["cost_per_request_usd"], ref.get("cost_per_request_usd")), {"max": g["max_cost_ratio"]})
     enough = checks[0]["passed"] and checks[1]["passed"]
     return checks, s, enough
@@ -456,8 +488,9 @@ def live_gate(actor: str, automatic: bool = False) -> tuple[bool | None, list[di
         return False, checks, stats
     if not already_passed:
         changes = {"stage": f"{base}_passed"}
-        if base == "canary" and stats["v1"]["requests"]:
-            changes["champion_reference"] = stats["v1"]
+        champion = core.lifecycle().get("champion", "v1")
+        if base == "canary" and stats[champion]["requests"]:
+            changes["champion_reference"] = stats[champion]
         core.set_lifecycle(**changes)
     return True, checks, stats
 
@@ -474,9 +507,12 @@ def promote(approver: str, role: str) -> str:
     client().set_model_version_tag(name, old, "status", "retired")
     client().set_model_version_tag(name, old, "retired_at", core.now().isoformat())
     client().set_registered_model_alias(name, "retired", old)  # kept for rollback, never deleted
-    core.set_traffic(0, champion="v2")                          # production route: 100% v2, no challenger
-    core.set_lifecycle(stage="promoted", champion="v2", v2_weight=100, window=_new_window("promoted"))
-    core.set_state("reference_eval.v2", core.get_state("offline_eval", {}).get("challenger"))
+    lc = core.lifecycle()
+    winner, loser = lc["challenger"], lc.get("champion", "v1")
+    core.set_lifecycle(champion=winner, challenger=None)
+    core.set_traffic(0, champion=winner)                        # production route: 100% new champion, no challenger
+    core.set_lifecycle(stage="promoted", challenger_weight=0, retired=loser, window=_new_window("promoted"))
+    core.set_state(f"reference_eval.{winner}", core.get_state("offline_eval", {}).get("challenger"))
     core.audit(f"{approver} ({role})", "promotion", "champion_promoted", "APPROVED",
                {"new_champion_registry_version": new, "retired_registry_version": old,
                 "weights": core.current_weights()})
@@ -511,7 +547,8 @@ def job_drift(job_id: int, actor: str) -> dict:
 def reset_demo(actor: str) -> None:
     """Restore Stage 0. The audit log is append-only and is NOT wiped: the reset is recorded in it.
     Cached per-example evaluation results are kept (same model + data + judge = same evidence)."""
-    core.set_traffic(0)
+    core.set_lifecycle(champion="v1", challenger=None)
+    core.set_traffic(0, champion="v1")
     name = _cfg()["model_name"]
     v1 = next((v["version"] for v in registry_versions() if v["tags"].get("nova_version") == "v1"), None)
     for alias in ("challenger", "retired"):
@@ -526,8 +563,10 @@ def reset_demo(actor: str) -> None:
     for table in ("requests", "shadow_pairs", "gate_decisions"):
         core.query(f"DELETE FROM governance.{table}")
     core.query("UPDATE governance.jobs SET status = 'cancelled' WHERE status IN ('queued', 'running')")
-    for key in ("offline_eval", "shadow_passed_once", "reference_eval.v2", "replay_offset"):
+    for key in ("offline_eval", "shadow_passed_once", "reference_eval.v2", "reference_eval.v3", "replay_offset",
+                "sim_offset"):
         core.query("DELETE FROM governance.state WHERE key = %s", (key,))
-    core.set_lifecycle(stage="baseline", v2_weight=0, shadow=False, champion="v1", window=_new_window("baseline"),
-                       champion_reference=None, rollback_reason=None)
+    core.set_lifecycle(stage="baseline", challenger_weight=0, shadow=False, champion="v1", challenger=None,
+                       window=_new_window("baseline"), champion_reference=None, rollback_reason=None,
+                       retired=None, shadow_window=None, story_start=core.now().date().isoformat())
     core.audit(actor, "baseline", "demo_reset", None, {"weights": core.current_weights()})

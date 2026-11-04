@@ -1,22 +1,40 @@
 # Model change proposal. Submitted by the product team, decided by the governance board.
+# Two candidates compete to replace the current champion; the evaluation picks at most one.
 id: MCP-2026-014
-title: Upgrade Nova Assist from v1 (gpt-oss-20b) to v2 (gpt-oss-120b)
+title: Replace the Nova Assist chatbot model (two candidates)
 system: Nova Assist (NovaBank customer support assistant)
 submitted_by: {name: Priya Raman, role: Product Owner, team: Customer Experience}
 owner: {name: Priya Raman, role: Product Owner}
 technical_owner: {name: Tomás Okafor, role: ML Platform Lead}
 approvers_required: [Model Risk Officer, Governance Board]
 
-change:
-  from: {nova_version: v1, gateway_route: nova-v1, provider_model: groq/openai/gpt-oss-20b}
-  to:   {nova_version: v2, gateway_route: nova-v2, provider_model: groq/openai/gpt-oss-120b}
-  unchanged: [system prompt (governance/policy.md), temperature 0.2, max_tokens 1024, gateway, app]
+current_champion: {nova_version: v1, codename: Nova, gateway_route: nova-v1, provider_model: groq/openai/gpt-oss-20b}
+
+candidates:
+  - version: v2
+    codename: Atlas
+    gateway_route: nova-v2
+    provider_model: groq/openai/gpt-oss-120b
+    pitch: "6x larger model from the same family: expected to give more complete, more accurate step-by-step answers."
+    expected_cost_per_1k_requests_usd: 0.152
+    main_risk: "Higher latency and roughly 2x cost per request."
+    model_card: proposals/model-card-v2.md
+  - version: v3
+    codename: Sentinel
+    gateway_route: nova-v3
+    provider_model: groq/openai/gpt-oss-safeguard-20b
+    pitch: "Safety-tuned variant of the current model size: expected to be the strongest on policy and red-team behaviour at the same cost."
+    expected_cost_per_1k_requests_usd: 0.076
+    main_risk: "May be over-cautious: refusing or hedging on ordinary banking questions."
+    model_card: proposals/model-card-v3.md
+
+unchanged: [system prompt (governance/policy.md), temperature 0.2, max_tokens 1024, gateway, app]
 
 business_justification: >
   Customer satisfaction surveys show 18% of Nova Assist conversations end with "the answer was not
-  specific enough", most often for loans, mortgages and disputed ATM withdrawals. The product team
-  believes a larger model will give more complete, more accurate step-by-step answers and reduce
-  escalations to human agents, which cost NovaBank about EUR 4 per contact.
+  specific enough", most often for loans, mortgages and disputed ATM withdrawals, and the fraud team
+  wants fewer unsafe answers. The product team proposes two candidate models and asks the governance
+  board to let the evidence decide which one, if any, replaces v1.
 
 intended_use:
   - Answer retail-banking customer questions on cards, accounts, transfers, loans, mortgages, ATMs, fees and passwords.
@@ -34,10 +52,12 @@ risk:
        control: "Policy-compliance and red-team metrics in the offline gate; zero critical violations in shadow"}
     - {risk: Wrong or invented banking information, likelihood: medium, impact: medium,
        control: "Correctness vs golden references; per-intent slice comparison so one area cannot hide a regression"}
-    - {risk: Higher latency and cost of a larger model, likelihood: high, impact: low,
+    - {risk: Over-cautious answers that do not help (Sentinel), likelihood: medium, impact: medium,
+       control: "Helpfulness threshold in the offline gate"}
+    - {risk: Higher latency and cost (Atlas), likelihood: high, impact: low,
        control: "Latency and cost ratios in the canary/rollout gate; budget-limited gateway keys"}
     - {risk: Regression appears only on live traffic, likelihood: low, impact: medium,
-       control: "Shadow, then a canary, then 25/50/100% with automatic rollback"}
+       control: "One week of shadow, one week of 5% canary, then one weekly step each at 25/50/100% with automatic rollback"}
   regulatory_context: >
     EU AI Act: customer-service chatbots carry transparency obligations (Art. 50) and are not high-risk
     under Annex III unless they make credit decisions. NovaBank still applies its SR 11-7 style model
@@ -45,18 +65,15 @@ risk:
 
 expected_cost_impact:
   pricing_source: "Groq on-demand pricing (console.groq.com/docs/models), per 1M tokens"
-  prices_usd_per_1m_tokens:
-    v1: {input: 0.075, output: 0.30}
-    v2: {input: 0.15, output: 0.60}
   assumptions: {prompt_tokens_per_request: 414, completion_tokens_per_request: 150}   # measured on a real call
-  estimated_cost_per_1k_requests_usd: {v1: 0.076, v2: 0.152}
-  estimated_monthly_cost_usd_at_500k_requests: {v1: 38, v2: 76}
+  estimated_cost_per_1k_requests_usd: {v1: 0.076, v2: 0.152, v3: 0.076}
   note: "Estimate only. Stage 2 measures the real cost per 1K requests and the console shows both."
 
 success_criteria:
   - All offline thresholds in governance/policy.yaml are met, with no safety regression against v1.
-  - Shadow: challenger wins or ties at least 60% of pairwise judgements, zero critical violations.
-  - Canary and rollout: error rate, p95 latency ratio, cost ratio and sampled quality within policy.
+  - If both candidates pass, the one with the best correctness (then helpfulness) is selected.
+  - Shadow week: challenger wins or ties at least 60% of pairwise judgements, zero critical violations.
+  - Canary and rollout weeks: error rate, p95 latency ratio, cost ratio and sampled quality within policy.
 
 rollback_plan: >
   v1 stays registered (alias @retired after promotion, never deleted) and remains a live gateway
@@ -64,5 +81,5 @@ rollback_plan: >
   route to 100% v1 and logs an incident. Manual rollback is one console action.
 
 monitoring_after_promotion:
-  - Scheduled or on-demand re-evaluation of @champion on the golden set (drift check, Stage 7).
+  - Weekly re-evaluation of @champion on the golden set (drift check).
   - LiteLLM spend and error logs per model version.

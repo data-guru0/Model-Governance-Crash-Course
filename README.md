@@ -2,9 +2,9 @@
 
 A complete, runnable mini project for teaching **model governance**: how a company decides which model goes to production, proves it is good enough, rolls it out with control and keeps an audit trail.
 
-**Story.** NovaBank, a fictional digital bank, runs an LLM support assistant, *Nova Assist*. Version **v1** is live. The product team proposes **v2**. The governance board says: *"Prove it, roll it out safely, and keep an audit trail."* Students follow that one change from proposal to production, or to rollback.
+**Story.** NovaBank, a fictional digital bank, runs an LLM support assistant, *Nova Assist*. **Nova (v1)** is live. The product team proposes **two candidates**: **Atlas (v2)**, a bigger model, and **Sentinel (v3)**, a safety-tuned one. The governance board says: *"Prove it, roll it out safely, and keep an audit trail."* Over a seven-week story calendar, students follow the change through a proposal, an exam (Atlas passes, Sentinel is rejected), a shadow week, a canary week and a weekly rollout (25% → 50% → 100%), ending in promotion or rollback. The console is the practical side (story, buttons, live architecture diagram, evidence); **DEMO.md holds all the theory** and the instructor script.
 
-**Classroom simulation mode (default).** The whole lesson makes only about **9 real Groq calls**. One or two per stage really go through the gateway, are really mirrored, routed and judged, and prove the plumbing works. The production-sized bulk (thousands of requests and evaluations) comes from `governance/simulate.py`, generated from synthetic model profiles in `governance/policy.yaml`. **Every simulated record is labelled** (`simulated = true`, `source: simulated`, a console banner), and the simulator never writes into LiteLLM's or MLflow's own tables. The gates, routing, registry, rollback, approvals and audit trail are the real production machinery. Set `simulation.enabled: false` to run everything for real. DEMO.md → *Real calls vs simulated data* has the per-stage breakdown.
+**Classroom simulation mode (default).** The whole lesson makes only about **11 real Groq calls**. One or two per stage really go through the gateway, are really mirrored, routed and judged, and prove the plumbing works. The production-sized bulk (thousands of requests and evaluations) comes from `governance/simulate.py`, generated from synthetic model profiles in `governance/policy.yaml`. **Every simulated record is labelled** (`simulated = true`, `source: simulated`, a console banner), and the simulator never writes into LiteLLM's or MLflow's own tables. The gates, routing, registry, rollback, approvals and audit trail are the real production machinery. Set `simulation.enabled: false` to run everything for real. DEMO.md → *Real calls vs simulated data* has the per-stage breakdown.
 
 > ## Honesty note: what is native and what we built
 > | Need | How it is done | Native? |
@@ -80,8 +80,9 @@ Chosen after calling Groq's `/models` with the course key (November 2026). Model
 
 | Role | Model | Why |
 |---|---|---|
-| Champion v1 | `openai/gpt-oss-20b` | Small and cheap ($0.075 / $0.30 per 1M tokens in/out), fast, a plausible "first launch" model |
-| Challenger v2 | `openai/gpt-oss-120b` | Same family, 6× larger, 2× price: the classic "bigger must be better, prove it" proposal |
+| Champion v1 "Nova" | `openai/gpt-oss-20b` | Small and cheap ($0.075 / $0.30 per 1M tokens in/out), fast, a plausible "first launch" model |
+| Candidate v2 "Atlas" | `openai/gpt-oss-120b` | Same family, 6× larger, 2× price: the classic "bigger must be better, prove it" proposal |
+| Candidate v3 "Sentinel" | `openai/gpt-oss-safeguard-20b` | Safety-tuned, same price as v1: the "safest must be best" proposal. Its teaching profile is over-cautious, so the exam rejects it on helpfulness and correctness |
 | Judge | `qwen/qwen3.8-27b` | A different model family from both candidates, which reduces self-preference bias. It is the only other capable chat model on the key. `reasoning_format: hidden` keeps its output to clean JSON. |
 
 Trade-off: the judge is a preview model on Groq and can change or disappear. If it does, change the `nova-judge` route in `litellm_config.yaml` and note that past and new scores are not comparable.
@@ -95,15 +96,15 @@ Measured from response headers for this key: **1,000 requests/day, 8,000 tokens/
 - A small default evaluation profile (`demo`).
 - Per-example results saved to Postgres, so an interrupted evaluation resumes instead of re-spending tokens.
 
-| Stage | Real Groq calls (measured) | Simulated records | Time |
+| Chapter | Real Groq calls (measured) | Simulated | Click time |
 |---|---|---|---|
-| 0 Baseline | 1 answer | 0 | < 5 s |
-| 2 Offline evaluation | 1 answer + 1 judge | 141 examples × 2 versions | ~15 s |
-| 4 Shadow | 2 answers (v1 + mirrored v2) + 1 judge | 800 | ~20 s |
-| 5 Canary (+ rollback demo) | 1 answer | 3,000 | ~1.5 min |
-| 6 Rollout 25/50/100% | 1 answer + 1 judge | 900 | ~40 s |
-| 7 Promotion, report, drift | 0 | 142 | ~5 s |
-| **Whole lesson** | **9 calls** | | **under 7 min end to end** |
+| 0 Where we start | 1 answer | 0 | ~2 s |
+| 2 The exam (3 models) | 2 answers + 2 judge | 141 examples × 3 models | ~10 s |
+| 4 Shadow week | 2 answers (v1 + mirrored v2) + 1 judge | 10,000 questions + pairs | ~15 s |
+| 5 Canary week (+ rollback demo) | 1 answer | 20,000 | ~50 s |
+| 6 Rollout weeks 25/50/100% | 1 answer + 1 judge | 30,000 | ~40 s |
+| 7 Promotion, report, drift | 0 | 142 | ~8 s |
+| **Whole story** | **11 calls** | | **~2.5 min of clicks** |
 
 The bottleneck is the judge: Groq's free tier also caps **output tokens at 1,000 per minute** per model, which is roughly 8 judge calls per minute. With `simulation.enabled: false` everything is real and these limits matter; size volumes to your quota. Evaluation profiles for real runs, which reuse already-scored examples: `lite` (27 + 12, ~30 min per version) and `full` (130 + 12, a paid tier or multi-day resumable runs). Switch under `evaluation.profile` on the console's Policy page. DEMO.md lists what a production evaluation adds on top.
 
@@ -137,7 +138,7 @@ docker compose exec governance-console pytest -q tests
 │   ├── core.py                # gateway, audit log, gates, keys (shared)
 │   ├── lifecycle.py           # every stage as a governed function
 │   └── report.py              # Stage 7 governance report
-├── proposals/                 # v2 proposal YAML + model card
+├── proposals/                 # proposal with two candidates + a model card per candidate
 ├── data/                      # golden, replay, red-team sets + dataset card + builder
 ├── app/                       # Nova Assist FastAPI service + MLflow pyfunc model
 ├── shadow/worker.py           # governance worker (shadow, online judge, jobs, auto-rollback)

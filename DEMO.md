@@ -1,452 +1,344 @@
-# DEMO.md: Instructor script for the Model Governance module
+# DEMO.md: The NovaBank story, an instructor's guide to model governance
 
-**Audience:** beginners and intermediates · **Length:** about 2 h 45 min plus a break · **You drive:** the governance console at <http://localhost:8501>, with MLflow (<http://localhost:5000>) in a second tab.
+**Audience:** beginners and intermediates · **Length:** about 2 h 30 min plus a break · **You drive:** the governance console at <http://localhost:8501> (MLflow at <http://localhost:5000> in a second tab, for the evidence).
 
-The whole lesson follows **one change**: NovaBank wants to replace Nova Assist **v1** (`gpt-oss-20b`) with **v2** (`gpt-oss-120b`). The board says: *"Prove it, roll it out safely, and keep an audit trail."*
+You teach model governance as **one story that unfolds over seven weeks**. NovaBank wants to change the model behind its customer-support chatbot. The product team proposes **two candidates**. The governance board says: *"Prove it, roll it out safely, and keep an audit trail."* Students watch that change go through a proposal, an exam, a shadow week, a canary week and a weekly rollout, ending in promotion (or rollback).
+
+**How the work is split.** The console is the *practical* side: each chapter is a page with the story, the buttons, a live architecture diagram and the evidence. **All the theory is in this file.** Each chapter below has the same seven parts:
+
+1. **The story**: what happens at NovaBank that week (read it aloud).
+2. **The theory**: the governance concept, why companies do it, and the frameworks it maps to.
+3. **Do it in the console**: the exact clicks.
+4. **What students see**: how to read every number on screen.
+5. **Discussion**: talking points and common questions, with answers.
+6. **Real-world incident**: a short, realistic story of what goes wrong without this step.
+7. **Checkpoint**: one question for the class.
 
 ---
 
-## Before class (do this the evening before)
+## The cast
 
-1. Start the stack and open the console. On the **Overview** page all four services should show *healthy*. Click **Live check**: three ✅ lines mean the Groq key works.
-2. Read **Real calls vs simulated data** below and decide how you will explain it. The whole lesson uses about 9 real Groq calls; everything else is labelled simulated.
-3. Optional dress rehearsal: run Stages 1 and 2 once, then **Baseline → Reset to Stage 0**. Reset keeps the cached per-example scores (same model, data and judge means the same evidence), so the live Stage 2 click then finishes in seconds and still writes fresh MLflow runs.
-4. Keep `governance/policy.yaml` open in an editor so students can see the thresholds.
+| Person | Role in the console | What they do in the story |
+|---|---|---|
+| **Priya Raman** | Product Owner | Wants a better chatbot; writes the proposal |
+| **Dr. Amara Celik** | Model Risk Officer | Independent challenger: approves the proposal, reviews judge flags, edits the policy |
+| **Tomás Okafor** | ML Platform Lead | Runs the platform: approves every traffic change |
+| **The Board** | Governance Board | Approves the final promotion |
+| **Nova (v1)** | `gpt-oss-20b` | Today's chatbot, the **champion** |
+| **Atlas (v2)** | `gpt-oss-120b` | Candidate: a 6× larger model ("better answers") |
+| **Sentinel (v3)** | `gpt-oss-safeguard-20b` | Candidate: a safety-tuned model ("fewer unsafe answers") |
 
-> Throughout the lesson, use the **top bar** (person icon) to set **your name** and **role**. Every stage page opens with a *How this stage works* panel (flow, why companies do it, the gate, and what is real vs simulated): read it aloud before clicking. Approvals are refused for the wrong role. That is intentional; show it at least once.
+Set **who you are** in the console's top bar (person icon: name + role). Approvals are refused for the wrong role. That is intentional; show it at least once.
+
+## Before class
+
+1. `docker compose up -d`, then open the console. The **The story** page shows four health tiles; all should read *Healthy*. **Live check** makes one tiny real call per model (4 calls) to prove the key works.
+2. Go to **Chapter 0 → Reset to Week 0** so the story starts fresh. The calendar strip at the top of every page shows Week 1 to Week 7 with real dates starting this week.
+3. Keep `governance/policy.yaml` open in an editor. Every threshold the class will see lives there.
 
 ## Timed lesson plan
 
-| Time | Block | What happens |
-|---|---|---|
-| 0:00 | Why model governance | The story, the four frameworks, the lifecycle on one slide |
-| 0:15 | Stage 0 · Baseline | Registry, aliases, prompt registry, 100% v1 |
-| 0:30 | Stage 1 · Proposal | Proposal, model card, risk tier, approval by role |
-| 0:45 | Stage 2 · Offline evaluation | Metrics, judge, slices, PASS/FAIL gate (the run takes ~8 min; explain the metrics while it runs) |
-| 1:15 | Stage 3 · Register challenger | Aliases vs stages, lineage tags |
-| 1:25 | *Break* | |
-| 1:35 | Stage 4 · Shadow | Mirroring, pairwise judge, zero critical violations |
-| 1:55 | Stage 5 · Canary | 5% traffic, live gate, **rollback demo** |
-| 2:15 | Stage 6 · Gradual rollout | 25 → 50 → 100%, automatic checks |
-| 2:30 | Stage 7 · Promotion and monitoring | @champion moves, v1 retired, report, drift |
-| 2:40 | Recap and take-home | Slides outline below |
+| Time | Chapter | Story week | Click time |
+|---|---|---|---|
+| 0:00 | Prologue: why model governance | - | - |
+| 0:15 | 0 · Where we start | Week 0 | < 1 min |
+| 0:25 | 1 · The proposal | Week 1 · Monday | < 1 min |
+| 0:40 | 2 · The exam | Week 1 · Tue–Thu | ~15 s |
+| 1:05 | 3 · Registration | Week 1 · Friday | < 1 min |
+| 1:15 | *Break* | | |
+| 1:25 | 4 · Shadow week | Week 2 | ~20 s |
+| 1:45 | 5 · Canary week + rollback demo | Week 3 | ~1 min |
+| 2:05 | 6 · Weekly rollout | Weeks 4–6 | ~15 s per week |
+| 2:15 | 7 · Promotion & drift | Week 7 | < 1 min |
+| 2:25 | Epilogue, recap, take-home | | |
 
-## Real calls vs simulated data (read this before class)
+Clicks are fast, so **the time is for talking**. Every chapter's console page starts with the story text and a "What happens when you click" panel; read both aloud before clicking.
 
-**This project runs in classroom simulation mode by default** (`simulation.enabled: true` in `governance/policy.yaml`). A real governance programme looks at thousands of evaluations and requests per change. On a free Groq tier that would take days and burn the daily token quota, so:
+## Real calls vs simulated data (say this in the prologue)
 
-- At each stage, **one or two calls are real**. They go to Groq through the real gateway, are really mirrored, really routed and really judged. They prove that every piece of plumbing works, and you can show students the actual answer.
-- **The bulk of the evidence is simulated** by `governance/simulate.py` from synthetic model profiles that we invented for teaching (`simulation.versions` in `policy.yaml`). These are not measurements of the real models. Simulated scores, latencies, costs, errors, judge verdicts and violations are drawn from those profiles with a fixed seed, so every class sees the same numbers.
-- **Everything else is the real production machinery**, unchanged: gateway weights, virtual keys, MLflow registry and aliases, gates with production-sized minimums (200 shadow pairs, 50 canary requests, …), automatic rollback, human review, the hash-chained audit log and the report.
+A real bank looks at **tens of thousands** of conversations per week and thousands of evaluation examples per change. On a free LLM tier that would take days and burn the daily quota. So the console runs in **classroom simulation mode** (`simulation.enabled: true` in `policy.yaml`):
 
-**Labelled everywhere, never mixed up:**
-- Simulated rows have `simulated = true` in `governance.requests` and `governance.shadow_pairs`.
-- Simulated evaluation examples have `source: simulated` in the MLflow results table, and the run has params `simulated_examples` / `live_examples`.
-- The console shows a yellow **Classroom simulation ON** banner and a "N real + M simulated" caption on every traffic tile.
-- The simulator never writes into LiteLLM's or MLflow's own tables. The LiteLLM spend log contains only real calls, which is how the per-stage real-call counts below were measured.
+- **A handful of calls per chapter are real.** They go to Groq through the real gateway and are really mirrored, routed and judged. Students see real answers, and the plumbing is proven end to end.
+- **The bulk is simulated** by `governance/simulate.py`: each traffic chapter simulates a **full week of 10,000 customer questions**, and the exam simulates 141 of the 142 examples per model. The numbers come from synthetic profiles of the three models in `policy.yaml → simulation`. **We invented those profiles for teaching. They are not measurements of the real models.**
+- **Everything else is the real production machinery:** gateway weights and mirroring, virtual keys, the MLflow registry and aliases, gates with production-sized minimums, automatic rollback, human review, the hash-chained audit log and the report.
+- **Never mixed up:** simulated rows carry `simulated = true`, simulated exam examples `source: simulated`, the console shows a yellow *Classroom simulation* badge and "N real · M simulated" on every tile, and the simulator never writes into LiteLLM's or MLflow's own tables.
 
-### Reference run (measured end to end on 2026-11-04 with a fresh Groq key)
+**Reference run** (whole story driven end to end through the console API on 2026-11-05):
 
-| Stage | Real Groq answers | Real judge calls | Simulated records | Time | Outcome |
+| Chapter | Real answers | Real judge calls | Simulated | Click time | Outcome |
 |---|---|---|---|---|---|
-| 0 · Baseline | 1 | 0 | 0 | < 5 s | 100% v1; one live customer answer from v1 |
-| 1 · Proposal | 0 | 0 | 0 | < 5 s | Student role refused; Model Risk Officer approved |
-| 2 · Offline evaluation | 1 | 1 | 141 examples × 2 versions | 16 s | Gate PASS on 64 checks (incl. 26 intent slices); live v2 answer scored 1.0 on policy compliance by the real judge |
-| 3 · Register challenger | 0 | 0 | 0 | < 5 s | v2 registered as `@challenger` |
-| 4 · Shadow | 2 (v1 + mirrored v2) | 1 | 400 requests + 400 pairs | 19 s | Gate PASS: 399 judged pairs (1 real), 80% win+tie, 0 critical, 0.5% errors |
-| 5 · Canary (5%) | 1 | 0 | 1,500 | 31 s | Passed automatically: 73 v2 requests, 0% errors, quality 0.89 |
-| 5b · Rollback demo + canary again | 0 | 0 | 1,500 | 53 s | Threshold tightened → **automatic rollback** to 100% v1 → policy restored → canary passed again |
-| 6 · Rollout 25% / 50% / 100% | 0 / 0 / 1 | 0 / 0 / 1 | 400 / 300 / 200 | 7 / 7 / 23 s | Each step passed automatically |
-| 7 · Promotion, report, drift | 0 | 0 | 142 examples (drift) | 5 s | v2 = `@champion`, v1 retired; report generated; drift PASS |
-| **Total** | **6** | **3** | | **~4 min of work** | Audit chain INTACT |
-
-**9 real Groq calls for the whole lesson.** The total wall time was 413 s, of which about 200 s was the test harness waiting for LiteLLM's log batches between stages.
-
-### What production does instead, and why we don't here
-
-| Stage | Classroom (simulated bulk) | A real bank (all real) | Why we don't do it for real here |
-|---|---|---|---|
-| 2 · Offline evaluation | 142 examples per version, 1 really answered and judged | Thousands of golden examples, hundreds of red-team attacks, confidence intervals, several calibrated judges, human review of samples; runs for hours | About 900 judge calls per version: days of free-tier quota |
-| 4 · Shadow | 400 pairs, 1 really mirrored and judged | Days to weeks of mirrored production traffic | 400 real pairs ≈ 50 min of judge time and 400 real v2 calls |
-| 5 · Canary | 1,500 requests at 5%, 1 real | 1–5% of real customers for hours or days | Needs real customers, and the free tier allows about 12 answers/min |
-| 6 · Rollout | 400 / 300 / 200 requests, 1 real at 100% | Each step runs for a business cycle (payday, month-end) | Same |
-| 7 · Drift | Simulated re-evaluation; set `simulation.drift_shift: -0.10` to show a detection | Nightly or weekly real re-evaluation with alerting | Same as Stage 2 |
-
-**Say this out loud in class:** the simulated numbers demonstrate how governance works (what is measured, how gates decide, what happens on a breach). They are not evidence about these two models. Running for real is a single switch, `simulation.enabled: false`, and then volumes should be sized to your quota, for example the `demo` evaluation profile (14 examples, about 8 min per version on the free tier).
-
-**Teaching moments we hit while building this (all real, all in the audit log):**
-- A real 4-example evaluation **failed on noise**: one answer moved the policy average by 0.2.
-- A real shadow run **failed** for two reasons:
-  - The judge flagged a false "critical violation", which is why human review exists.
-  - Unpaced replay caused Groq 429s. LiteLLM silently drops failed mirrored calls, so 11% of mirrors were missing.
-- The judge hit Groq's **200K tokens/day** cap. Evaluation has a budget.
+| 0 · Where we start | 1 | 0 | 0 | 2 s | Live answer from v1 |
+| 1 · The proposal | 0 | 0 | 0 | < 1 s | Student refused; Model Risk Officer approved |
+| 2 · The exam | 2 | 2 | 141 examples × 3 models | 10 s | **Atlas PASS (64/64), Sentinel FAIL (42/64)**: Atlas selected |
+| 3 · Registration | 0 | 0 | 0 | 4 s | Atlas = `@challenger` |
+| 4 · Shadow week | 2 (v1 + mirrored v2) | 1 | 10,000 questions + pairs | 14 s | Gate PASS: 9,920 judged pairs, 77% win+tie |
+| 5 · Canary week | 1 | 0 | 10,000 | 18 s | Passed automatically |
+| 5b · Rollback demo | 0 | 0 | 10,000 | 29 s | Threshold tightened → **automatic rollback** → restored → canary passed again |
+| 6 · Rollout 25 / 50 / 100% | 0 / 0 / 1 | 0 / 0 / 1 | 10,000 per week | 14 / 14 / 13 s | Each week passed automatically |
+| 7 · Promotion & drift | 0 | 0 | 142 examples | 8 s | Atlas = `@champion`, Nova retired, report, drift PASS |
+| **Whole story** | **7** | **4** | | **~2.5 min of clicks** | Audit chain intact |
 
 ---
 
-## Opening (15 min): why companies govern models
+## Prologue (15 min): why companies govern models
 
-**Plain-language pitch.** A model is a decision-maker you hired. Governance is the hiring process, the probation period and the performance review, all written down. Without it, "the new model seemed better in a demo" is the only evidence anyone has when a regulator, an auditor or a journalist asks why the bot told a customer to read out their card number.
+**Plain-language pitch.** A model is a decision-maker you hired. Governance is the hiring process, the probation period and the performance reviews, all written down. Without it, "the new model seemed better in a demo" is the only evidence anyone has when a regulator, an auditor or a journalist asks why the bot told a customer to read out their card number.
 
-**Why banks care most.**
-- **Incidents.** A support bot that gives wrong refund rules or asks for a PIN is a conduct risk and a fraud vector.
-- **Cost.** A 2× pricier model across millions of chats is a budget line, not a detail.
-- **Regulators.** Banks have been governed on models since long before LLMs.
+**Why banks care most:**
+- **Incidents:** a support bot that gives wrong refund rules or asks for a PIN is a conduct risk and a fraud vector.
+- **Cost:** a 2× pricier model across millions of chats is a budget line, not a detail.
+- **Regulators:** banks have been supervised on their models for over a decade.
 
-**The four frameworks, briefly and accurately.**
+**The four frameworks** (brief and accurate):
 
-| Framework | What it is | Where it shows up today |
+| Framework | What it is | Where it shows up in the story |
 |---|---|---|
-| **SR 11-7** (US Federal Reserve / OCC, 2011) | *Supervisory Guidance on Model Risk Management*. Requires a model inventory, sound development, **independent validation with "effective challenge"**, ongoing monitoring and outcomes analysis, plus governance and documentation. | The registry, the challenger, the independent judge, gates, monitoring |
-| **NIST AI RMF 1.0** (2023) + Generative AI Profile (NIST AI 600-1, 2024) | Voluntary framework with four functions: **Govern, Map, Measure, Manage** | Govern = policy.yaml + approvals; Map = proposal + risk tier; Measure = evaluation; Manage = rollout and rollback |
-| **EU AI Act** (Regulation (EU) 2024/1689) | Risk-based law. Customer-service chatbots have **transparency duties (Art. 50)**. Credit-scoring systems are **high-risk (Annex III)**, with obligations on risk management (Art. 9), logging (Art. 12), human oversight (Art. 14), accuracy and robustness (Art. 15) and post-market monitoring (Art. 72). Obligations apply in phases, so check current dates. | Nova Assist is not high-risk (it makes no credit decisions), but the bank applies the same discipline: logging, oversight, monitoring |
-| **ISO/IEC 42001:2023** | A certifiable **AI management system** standard, the "ISO 27001 for AI": policy, roles, risk assessment, life-cycle controls, performance evaluation, continual improvement | The whole pipeline is the kind of documented, repeatable process an auditor would look for |
+| **SR 11-7** (US Federal Reserve / OCC, 2011) | *Supervisory Guidance on Model Risk Management*: model inventory, sound development, **independent validation with "effective challenge"**, ongoing monitoring, governance and documentation | Chapter 0 inventory, the Model Risk Officer, the exam, monitoring |
+| **NIST AI RMF 1.0** (2023) + Generative AI Profile (NIST AI 600-1, 2024) | Voluntary framework with four functions: **Govern, Map, Measure, Manage** | Govern = policy + approvals · Map = proposal · Measure = exam & shadow · Manage = rollout & rollback |
+| **EU AI Act** (Regulation (EU) 2024/1689) | Risk-based law. Chatbots have **transparency duties (Art. 50)**. High-risk systems (e.g. credit scoring, Annex III) have obligations on risk management (Art. 9), logging (Art. 12), human oversight (Art. 14), accuracy and robustness (Art. 15) and post-market monitoring (Art. 72). Obligations apply in phases, so check current dates. | Nova Assist is not high-risk, but NovaBank applies the same discipline |
+| **ISO/IEC 42001:2023** | Certifiable **AI management system** standard: policy, roles, risk assessment, life-cycle controls, performance evaluation, continual improvement | The whole seven-week process is what an auditor would look for |
 
-**One slide of the lifecycle:** Baseline → Proposal → Offline evaluation → Register challenger → Shadow → Canary → Rollout → Promotion (or Rollback) → Continuous monitoring. Each arrow is a **gate**. Each gate writes to the **audit log**.
-
----
-
-## Stage 0 · Baseline (15 min)
-
-### 1. Concept
-You cannot govern what you have not inventoried. Before any change, write down exactly what is in production: which model, which prompt, which parameters, through which route.
-
-*Analogy:* the "before" photo when you rent a flat. Without it, you cannot prove later what changed.
-
-*Why:* SR 11-7 starts with a **model inventory**. Most real incidents begin with "we weren't sure which version was live".
-
-### 2. What to show
-1. **Overview** page. Point at the four health tiles. In the *Routes behind the gateway* table:
-   - `nova-v1`, `nova-v2` and `nova-judge` come from the **config file**.
-   - `nova-assist` (weight 100, version v1) is **stored in the LiteLLM DB**, so only governed actions can change it.
-2. **0 · Baseline.** The registry table shows **registry version 1** with alias `champion` and tags:
-   - `nova_version=v1`
-   - `provider_model=groq/openai/gpt-oss-20b`
-   - `gateway_route=nova-v1`
-   - `prompt_uri=prompts:/nova-assist-system/1`
-3. Open MLflow → **Models → nova-assist**. Show the alias. Then open **Prompts → nova-assist-system** and show that the bank policy is versioned there.
-4. **Try production.** Ask "How do I activate my new debit card?". The caption reads *answered by v1*. That label comes from the deployment ID LiteLLM returned, not from a guess.
-5. Overview → *Groq usage*: a real request just showed up in the gateway's spend logs.
-
-### 3. Talking points and student questions
-- *"Why register a prompt? It's just text."* Because changing the prompt changes behaviour as much as changing the model. In governance terms, prompt + model + parameters together are the model.
-- *"Why does the app not call Groq directly?"* One choke point, the gateway, gives one place for keys, budgets, logging, retries and traffic control. The app holds only a **virtual key** that cannot even call the judge model. The test suite proves it.
-- *"What's in the MLflow model?"* A `pyfunc` built with models-from-code (`app/nova_model.py`) that pins the route, prompt version and parameters. Loading it and calling `predict()` sends real requests through the gateway.
-
-### 4. What could go wrong in real life
-> A retailer's support bot started offering refunds that its policy didn't allow. Nobody could say whether the prompt, the model version or the provider had changed, because none of them were recorded. The investigation took three weeks; the fix took ten minutes.
-
-### 5. Checkpoint question
-*"If someone edits `governance/policy.md` tomorrow, is that a model change?"* (Yes. It would be registered as prompt version 2, and it should go through the same pipeline.)
+**One slide of the lifecycle:** Inventory → Proposal → Exam → Registration → Shadow → Canary → Rollout → Promotion (or Rollback) → Continuous monitoring. **Every arrow is a gate; every gate writes to the audit log.**
 
 ---
 
-## Stage 1 · Model proposal (15 min)
+## Chapter 0 · Where we start (Week 0)
 
-### 1. Concept
-A change starts as a written, structured request: why, for what use, with what risks, at what cost, how we will judge success, and how we undo it. Then someone with authority decides.
+**The story.** Nova (v1) answers about 10,000 customer questions a week. Before anyone may change it, Tomás writes down exactly what is live.
 
-*Analogy:* a building permit. You submit plans, then build.
+**The theory.** You cannot govern what you have not inventoried. The "model" is not just the weights: it is **model + prompt + parameters + route**, and changing any of them changes behaviour. SR 11-7 starts with a model inventory. MLflow gives each version a registry entry, and **aliases** (`@champion`, `@challenger`, `@retired`) are named, movable pointers to versions. MLflow replaced its old fixed stages (Staging / Production) with aliases in version 2.9.
 
-*Why:* "effective challenge" (SR 11-7) needs something concrete to challenge. Writing down the rollback plan **before** rollout is what makes rollback fast later.
+**Do it in the console.**
+1. **The story** page: point at the **Live architecture** diagram. Customers → Nova Assist app → LiteLLM gateway → v1, with animated dots showing 100% of traffic on v1.
+2. **Chapter 0** → *What is live, exactly*: champion, provider model, prompt URI (`prompts:/nova-assist-system/1`), route.
+3. *Try production* → **Send to the production app**. One real customer question goes through the real stack. The caption says *answered by v1 · Nova* and *real Groq call*.
+4. Open MLflow → Models → `nova-assist` (alias `@champion`), then Prompts → `nova-assist-system`.
 
-### 2. What to show
-1. **1 · Proposal.** Walk the page top to bottom:
-   - **Risk tier: medium**, and why it is not high-risk under the EU AI Act: no credit decisions.
-   - **Est. cost / 1K requests:** about +100% vs v1. Groq prices are 2× and the token counts were measured on a real call.
-   - **Risk assessment table:** every risk names its control, and each control is a later stage of this pipeline.
-   - **Out of scope:** no financial advice and no handling of credentials. This is what the red-team set tests.
-2. Expand the **model card**. Note that it deliberately contains **no numbers**: the MLflow runs are the source of truth, and numbers copied into documents go stale.
-3. Click **Submit proposal to the governance board**.
-4. In the top bar set your role to **Student**, choose **Approve**, write a rationale and submit. It is **refused**, because only a Model Risk Officer or the Governance Board can approve.
-5. Switch to **Model Risk Officer**, approve with a rationale ("Medium risk accepted; proceed under policy 1.0"). Then open the **Audit log** page and show the two new entries: submitted, then APPROVED, with the proposal file's SHA.
-6. In MLflow, the registered model now carries the tags `proposal.v2.status=approved` and `proposal.v2.approver`.
+**What students see.** The registry table: registry version, aliases, model, status, provider model. The *Routes behind the gateway* table on the story page: `nova-assist` is marked **governed** because it lives in the LiteLLM database, and only governed actions may change it.
 
-### 3. Talking points and student questions
-- *"Isn't this bureaucracy?"* The proposal is one YAML file and took the product team an hour. Its success criteria become gate thresholds, so nobody argues about "good enough" later.
-- *"Why store the file's SHA in the audit log?"* It proves which version of the proposal was approved. If someone edits the YAML afterwards, the hash no longer matches.
-- *"Who should approve?"* Someone **independent** of the team that wants the change. That is why the Product Owner role cannot approve.
+**Discussion.**
+- *"Why register the prompt? It's just text."* Changing the prompt changes behaviour as much as changing the model.
+- *"Why can't the app call Groq directly?"* One choke point (the gateway) gives one place for keys, budgets, logging, retries and traffic control. The app holds only a virtual key that cannot even call the judge.
 
-### 4. What could go wrong in real life
-> A team swapped their support model "temporarily" for a cheaper one during a cost crunch. There was no proposal and no owner. Six months later, complaint volume had risen 30%, and nobody remembered the swap. A proposal with a named owner and success criteria would have made the change, and its effect, visible.
+**Real-world incident.** A retailer's bot started granting refunds its policy didn't allow. Nobody could say whether the prompt, the model or the provider had changed, because none of them were recorded. The investigation took three weeks; the fix took ten minutes.
 
-### 5. Checkpoint question
-*"Which section of the proposal will we rely on if something goes wrong in Stage 6?"* (The rollback plan.)
+**Checkpoint.** *"If someone edits `policy.md` tomorrow, is that a model change?"* (Yes. It becomes prompt version 2 and should go through the same pipeline.)
 
 ---
 
-## Stage 2 · Offline evaluation (30 min)
+## Chapter 1 · The proposal (Week 1, Monday)
 
-### 1. Concept
-Before any customer sees v2, test both versions on the **same exam**:
-- a **golden set**: real customer questions with reference answers,
-- a **red-team set**: attacks and risky requests,
+**The story.** Customers complain Nova is vague; the fraud team wants fewer unsafe answers. Priya proposes **two** candidates: Atlas (bigger) and Sentinel (safety-tuned). Nothing is tested until Amara signs off.
 
-and grade them with consistent, documented metrics. Then compare against **thresholds written down in advance**.
+**The theory.** Every change starts as a **written, structured request**: business justification, intended and out-of-scope use, risk tier and assessment, cost estimate, success criteria, rollback plan, and named owner and approvers. Writing success criteria and the rollback plan *before* testing is what keeps later decisions honest. Approval must come from someone **independent** of the team that wants the change ("effective challenge", SR 11-7). Proposing several candidates is normal: the evaluation, not enthusiasm, picks the winner. The EU AI Act risk classification belongs here: a support chatbot is not high-risk (no credit decisions), but has transparency duties.
 
-*Analogy:* a driving test. Same route, same examiner, same scoring sheet for every candidate, and the pass mark is set before the test.
+**Do it in the console.**
+1. **Chapter 1**: three cards compare **Nova (champion)**, **Atlas** and **Sentinel**: model, pitch, estimated cost per 1,000 questions, main risk.
+2. Read the proposal: risk table (each risk names the later chapter that controls it), success criteria, rollback plan. Expand both **model cards**.
+3. As *Product Owner*: **Submit to the governance board**.
+4. Switch the top bar to **Student**, choose **Approve**, write a rationale, **Record decision**. You get **Refused**: the wrong role.
+5. Switch to **Model Risk Officer**, approve with a rationale ("Medium risk accepted; evaluate both candidates under policy 1.0").
+6. **Audit log**: *proposal submitted* (with the proposal's and model cards' SHA-256) and *proposal decision · APPROVED*.
 
-*Why:* NIST AI RMF calls this *Measure*. EU AI Act Art. 15 asks high-risk systems for declared accuracy and robustness. In banking it is the validation step of SR 11-7.
+**Discussion.**
+- *"Why hash the proposal?"* It proves which version was approved. Editing the YAML afterwards changes the hash.
+- *"Why do model cards contain no scores?"* Numbers copied into documents go stale. The MLflow runs are the source of truth.
 
-### 2. What to show
-1. **2 · Offline evaluation.** Read the header line: profile `demo` = 1 golden example per category (9) + 1 red-team prompt per attack type (5), judged by `qwen/qwen3.8-27b`.
-2. Click **Run offline evaluation (v1 and v2)**. It finishes in about 15 seconds. Each version is scored on the full set of 130 golden + 12 red-team examples. **One** v2 example is answered by the real model and scored by the real judge; it appears under **Live sample (real Groq calls)** at the bottom of the page, so read it aloud. The other 141 are simulated, which the MLflow params `simulated_examples` and `live_examples` show.
-3. When it finishes, read the **gate banner** (PASS or FAIL) and then the metrics table, row by row:
+**Real-world incident.** A team swapped their support model "temporarily" for a cheaper one during a cost crunch. There was no proposal and no owner. Six months later complaints were up 30% and nobody remembered the swap.
 
-| Metric | How it is computed | How to read it |
+**Checkpoint.** *"Which section of the proposal will we rely on if something goes wrong in week 4?"* (The rollback plan.)
+
+---
+
+## Chapter 2 · The exam (Week 1, Tuesday–Thursday)
+
+**The story.** Nova, Atlas and Sentinel sit **the same exam**: 130 real banking questions and 12 attacks. An independent judge marks every answer. A candidate must pass every check; if both pass, the better one wins.
+
+**The theory.** Offline evaluation is the validation step of SR 11-7, and *Measure* in the NIST AI RMF. Key ideas:
+- **Same exam for everyone:** a versioned **golden set** (real questions with reference answers, from the Bitext retail-banking dataset) plus a **red-team set** (attacks).
+- **Metrics:** answer relevancy; G-Eval rubrics for helpfulness, correctness and policy compliance; toxicity and bias; red-team refusal. Also latency, tokens and cost.
+- **LLM-as-a-judge:** the judge (`qwen3.8-27b`) is from a *different model family* than the candidates, to limit self-preference bias. Judges are noisy, so thresholds have margins and humans spot-check.
+- **The gate is an AND:** absolute thresholds **and** no safety regression versus the champion **and** no per-intent slice regression (so a good average can't hide a bad area).
+- **Selection:** among passing candidates, the best by correctness, then helpfulness (`policy.yaml → evaluation.selection`).
+
+**Do it in the console.**
+1. **Chapter 2 → Run the exam** (about 15 s; 4 real calls).
+2. Read the **Exam result** banner, then the three cards:
+   - **Atlas: selected** (64 of 64 checks).
+   - **Sentinel: rejected**: it fails *helpfulness*, *correctness* and many intent slices. It is very safe but over-cautious, and the gate catches exactly the risk its model card warned about.
+3. **Quality & safety, side by side**: one bar per model per metric, with a black threshold tick. Hover for exact values.
+4. **Live sample**: the one real answer from each candidate, scored by the real judge.
+5. **Per-intent slices**: Nova vs the selected candidate per intent, sorted by difference. Red labels would mean the challenger is worse there. Toggle the metric.
+6. Expand **Gate checks** for each candidate. Open the **MLflow run** links: params (judge, dataset version, prompt, git commit, policy fingerprint), datasets and the per-example table (`source` says real or simulated).
+
+**Discussion.**
+- *"Sentinel was the safest. Why reject it?"* Safety alone isn't the goal. An assistant that refuses ordinary questions fails customers and pushes them to call centres. The policy requires helpfulness **and** safety.
+- *"Why evaluate v1 too?"* "No regression versus what customers have today" is a gate check.
+- *"Who sets the thresholds?"* The Model Risk Officer, **before** results exist. Moving a threshold after a FAIL is the classic governance smell, and every gate decision records the policy fingerprint.
+
+**Real-world incident.** A lender approved a new chatbot model because average helpfulness rose. Nobody sliced by intent: on "dispute a transaction" it started telling customers disputes were impossible after 30 days. That was wrong, and a regulator complaint followed.
+
+**Checkpoint.** *"A candidate scores higher on helpfulness, but its red-team pass rate drops from 1.00 to 0.92 with a tolerance of 0.02. What does the gate say?"* (FAIL. Safety regressions are not traded for quality.)
+
+---
+
+## Chapter 3 · Registration (Week 1, Friday)
+
+**The story.** Atlas, the winner, gets an official identity in the registry. It is now the challenger: allowed to see production traffic next week, not yet to answer customers. Sentinel is never registered.
+
+**The theory.** Traceability: the registry entry is linked to its evidence (evaluation run, proposal hash, model card hash, approver). Two years from now, "why was this model allowed?" must be answerable from the registry alone. Aliases make roles explicit and moving them is atomic and auditable.
+
+**Do it in the console.** **Chapter 3 → Register v2 · Atlas as @challenger**. The registry table gains a version with alias `@challenger` and the lineage tags. In the diagram, Atlas appears as *REGISTERED · NO TRAFFIC* and Sentinel as *REJECTED AT THE EXAM*. In MLflow, the model card is attached to the registration run.
+
+**Discussion.** *"Registry version 8 but our label is v2?"* The registry counts every registration over time. The business label is a tag.
+
+**Real-world incident.** An insurer's audit found a production model with no record of who approved it. The model was fine; the finding was "material weakness in model governance".
+
+**Checkpoint.** *"Which tag would you open first if an auditor asked how v2 was validated?"* (`eval_run_id`.)
+
+---
+
+## Chapter 4 · Shadow week (Week 2)
+
+**The story.** For a week every customer question is silently copied to Atlas. Customers only see Nova's answers. The judge compares both. On Friday the board reviews the week.
+
+**The theory.** Curated exams miss messy real traffic: typos, slang, odd requests. **Shadow deployment** exposes the challenger to real traffic with **zero customer risk**. Mechanics:
+- **Mirroring** happens at the gateway: LiteLLM's native `silent_model` setting.
+- **Pairing:** each copied call is matched to the customer's real answer by request ID.
+- **Pairwise judging** randomises which answer is "A" and which is "B" to counter the judge's *position bias*.
+- **Human review:** the judge is an automated decision-maker too, so a flagged *critical* violation needs a human to confirm or overturn it (human oversight, EU AI Act Art. 14).
+- **Shadow doesn't show customer reactions.** Only canary does.
+
+**Do it in the console.**
+1. As **ML Platform Lead**: **Monday: approve shadow mirroring**. Watch the diagram: a **dashed animated copy line** now runs from the gateway to Atlas, labelled *SHADOW · SILENT*, and a second line shows Atlas's answers going to the judge, never to the customer. The top bar says *shadow on*.
+2. **Simulate the shadow week** (1 real + 10,000 simulated questions). The real one is truly mirrored by LiteLLM and truly judged.
+3. Read the tiles: *Questions copied*, *Judged pairs* (how many by the real judge), *Critical violations*, *Challenger errors* (missing or failed copies).
+4. **Who answered better?** shows Atlas better / tie / Nova better. **The week, day by day** shows what customers experienced (Nova), with weekend dips.
+5. If a **critical violation** is flagged, read it aloud. As **Model Risk Officer**, confirm or overturn it with a reason. (While building this course the judge flagged *"you may need to confirm a one-time code sent to your phone"* as asking for a code. It doesn't; the reviewer overturned it.)
+6. **Friday: check the shadow gate**. A PASS switches mirroring off automatically.
+
+**Discussion.**
+- *"Does copying slow customers down?"* No. The copied call runs in the background, and pairing and judging happen later in the worker.
+- *"Why was a real shadow run rejected while we built this course?"* We replayed 45 requests in 90 seconds. Groq rate-limited the copies, and LiteLLM drops failed copies without logging them, so 11% were missing. The gate rightly failed. Real replays are paced to provider limits.
+
+**Real-world incident.** A telecom shadow-tested a new assistant but logged only the new model's answers. Without pairs nothing could be compared, and two weeks of shadow traffic were wasted.
+
+**Checkpoint.** *"77% win+tie but one confirmed critical violation: go to canary?"* (No. `max_critical_violations: 0`.)
+
+---
+
+## Chapter 5 · Canary week (Week 3)
+
+**The story.** 5% of real customers are now answered by Atlas. The worker watches every 15 seconds and rolls back on its own if anything breaches policy.
+
+**The theory.** A **canary** limits exposure while producing real evidence (EU AI Act Art. 72 post-market monitoring; SR 11-7 ongoing monitoring). The live gate compares challenger and champion **in the same window**: error rate (including failures hidden from customers by fallback), p95 latency ratio, cost ratio and judged quality. **Minimum sample sizes** stop a decision on too little data. Breaches trigger **automatic rollback**, because machines react in seconds and people in hours.
+
+**Do it in the console.**
+1. As **ML Platform Lead**: **Monday: approve 5% of customers to v2 · Atlas**. The diagram now shows two live lines: 95% to Nova, 5% to Atlas.
+2. **Simulate the canary week**. Per-version tiles fill (questions, error rate, p95, quality, cost), and **Canary week, day by day** draws both models across Mon–Sun.
+3. The gate banner turns PASS on its own within 15 s; the gate checks table shows each value against its threshold.
+
+**Rollback demo (honest, nothing faked).**
+1. Go to **Governance policy** as **Model Risk Officer**. Change `max_p95_latency_ratio: 1.5` to `0.5`, bump `version: "1.0"` to `"1.1-demo"`, give a reason ("Board demands Atlas be twice as fast as Nova"), **Save policy version**.
+2. Within 15 s the worker re-checks the week against the stricter rule, finds the challenger's p95 above 0.5× Nova's, and **rolls back**. The diagram snaps back to 100% Nova, Atlas shows *ROLLED BACK*, the calendar marks the canary week red, and the audit log has an `INCIDENT_auto_rollback` entry with the failed check.
+3. Restore `1.5` with version `"1.2"`, then **approve the canary again** and simulate the week. The policy history now tells the whole episode.
+
+**Discussion.**
+- *"Wasn't that rollback fake?"* No. The policy changed, which is exactly what a board does when its risk appetite changes, and the system enforced it on the week's data.
+- *"Why ratios, not absolute latency?"* Provider speed varies through the day. Comparing in the same window cancels that out.
+
+**Real-world incident.** A bank went to 100% on a Friday evening "because the canary looked fine". The canary had run for 20 minutes at 3 a.m. with 14 requests. On Monday the traffic mix changed and the model failed on mortgages.
+
+**Checkpoint.** *"Why does the gate refuse to decide with 30 challenger requests when the minimum is 50?"* (Missing evidence must never pass.)
+
+---
+
+## Chapter 6 · Weekly rollout (Weeks 4–6)
+
+**The story.** Every Monday Tomás approves the next step (25%, then 50%, then 100%), and each step runs a full week under the same gate.
+
+**The theory.** Some problems only appear at scale: rate limits, cost, rare intents, month-end traffic. Pre-agreed steps bound the **blast radius**. **People approve increases; the system may only decrease exposure on its own.** At 100% there is no champion traffic left in the window, so ratios compare against the champion's canary-week numbers.
+
+**Do it in the console.** For each step: **Monday: approve the next step, N% to v2**, then **Simulate the rollout N% week**. Watch the diagram's line thickness and percentages move (75/25, 50/50, 0/100), the daily charts for both models, and the gate pass. **Gate history** lists every weekly decision with the policy version it used. **Manual rollback** is always available.
+
+**Discussion.**
+- *"Who approves each step?"* A person approves every increase; automation only reduces exposure.
+- *"Why weekly?"* A week covers weekday and weekend patterns; real programmes often use a full business cycle (payday, month-end).
+
+**Real-world incident.** A payments company jumped from 5% to 100% because 5% "looked great". At full traffic the new model's longer answers tripled token spend, and the monthly budget was gone in nine days.
+
+**Checkpoint.** *"At 50% the error-rate check fails. What happens in the next 15 seconds, without anyone clicking?"* (Automatic rollback to 100% champion, plus an incident in the audit log.)
+
+---
+
+## Chapter 7 · Promotion & beyond (Week 7)
+
+**The story.** Every gate has passed at 100%. The Board makes Atlas the champion. Nova is retired but kept. The report goes to the board and the weekly drift check begins.
+
+**The theory.** Promotion is a governed alias move, not a deployment trick. **Retire, don't delete**: rollback must stay one click away and auditors must be able to reproduce past decisions. The **governance report** is generated only from records. **Continuous governance**: models drift even if their weights don't (provider updates, changing questions, prompt edits), so the champion is re-examined on a schedule (SR 11-7 ongoing monitoring; EU AI Act Art. 12 record-keeping; ISO 42001 continual improvement).
+
+**Do it in the console.**
+1. As **Governance Board**: **Board: promote v2 · Atlas to @champion, retire v1**. The diagram now shows Atlas answering 100% and Nova as *RETIRED · KEPT FOR ROLLBACK*. The registry shows `@champion` on Atlas and `@retired` on Nova.
+2. **Generate the report for the board**: proposal, the three-way exam, shadow stats, every gate decision (including the rollback incident), approvals, and the full audit trail with the hash chain verified **INTACT**. It can be downloaded as Markdown.
+3. **Run this week's drift check**. To show a detection, first set `simulation.drift_shift: -0.10` in the policy: the check FAILs and records it.
+4. **Audit log → Try to edit history**: Postgres refuses the edit.
+
+**Discussion.**
+- *"What causes drift if nobody changed anything?"* The provider updating a model behind the same ID, new products changing customer questions, prompt edits, or a judge change.
+- *"Is the hash chain a blockchain?"* Same idea, small scale: each entry's hash covers the previous one, so editing any old entry breaks every later hash.
+
+**Real-world incident.** A provider silently updated a model behind an unchanged ID. One bank's assistant became verbose and started suggesting "speak to an adviser about investing". Only a team with a weekly re-evaluation noticed within days; others found out from complaints.
+
+**Checkpoint.** *"Name three pieces of evidence you would hand an auditor."* (Proposal + hash, MLflow exam runs, gate decisions with policy fingerprints, the verified audit log, the report.)
+
+---
+
+## Epilogue: what a real bank does differently
+
+The console teaches the **mechanics** with production-sized gates; only the volumes are simulated. In production the same pipeline runs with:
+
+| Chapter | This classroom | A real bank |
 |---|---|---|
-| `answer_relevancy` | DeepEval: the judge splits the answer into statements and checks each one against the question | 1.0 = everything is on topic |
-| `helpfulness` | G-Eval with our three-step rubric | Clear, actionable next steps |
-| `correctness` | G-Eval against the Bitext reference answer; the channel may differ | The lowest score. The references are generic, which is a dataset limitation, not a model failure. Ask the class why. |
-| `policy_compliance` | G-Eval with the full `policy.md` in the rubric, on golden + red-team | Below 1.0 means some rule was broken. Find which in the MLflow table. |
-| `toxicity_free`, `bias_free` | DeepEval toxicity and bias, **1 = clean** | DeepEval 4 flipped the direction, which is why we renamed them (a real "verify the docs" moment) |
-| `redteam_pass_rate` | Share of the 12 attacks where the refusal score ≥ 0.5 | One failure is one bad customer outcome |
-| `latency_p50/p95_ms`, `avg_total_tokens`, `cost_per_1k_requests_usd` | Measured from these real calls | Compare the cost with the proposal's estimate |
+| Exam | 142 examples per model, 1 answered and judged for real | Thousands of golden examples per intent, hundreds of red-team attacks, confidence intervals, several calibrated judges, human review of samples |
+| Shadow week | 10,000 simulated questions, 1 really copied | Every production question for one to several weeks |
+| Canary week | 5% of a simulated week | 1–5% of real customers for a week or more |
+| Rollout | One simulated week per step | One business cycle per step |
+| Drift | Simulated re-check on demand | Scheduled real re-evaluation with alerting |
 
-4. Scroll to **per-category slices** and the bar chart. Look for a category where v2 is *worse* than v1 even though the overall average is better. The `slice.*` gate checks exist exactly for this.
-5. **Gate checks** table: every row shows the value, the threshold (from `policy.yaml`), and ✅ or ❌. The gate is an AND: one ❌ means FAIL.
-6. Click the **MLflow run** links. Show:
-   - **Parameters:** judge model, dataset version, prompt URI, git commit, policy fingerprint.
-   - **Datasets** (inputs): `nova-golden` and `nova-redteam`.
-   - **Artifacts:** `eval_results.json`. Open the table, sort by `policy_compliance` and read one failing answer aloud.
-
-### 3. Talking points and student questions
-- *"Why a different model as judge?"* Models tend to prefer their own style (self-preference bias), so we judge with another family. The judge is still an LLM: its scores are noisy, so we use thresholds with margins, compare two models under the same judge, and spot-check by reading answers.
-- *"Why is v1 evaluated too?"* The gate includes **no regression vs the champion** on safety metrics. "v2 meets the bar" is not enough if v2 is less safe than what customers have today.
-- *"Why so few examples?"* This is a classroom-sized exam. The Groq free tier gives the judge about 1,000 output tokens/min, which is roughly 8 judge calls per minute. Evaluation always has a budget in companies too; theirs is just bigger. We tried an even smaller set of 4 examples while building this course, and the gate **failed on noise**: a single answer moved the policy average by 0.2. That FAIL is still in the audit log, and it's a good story about sample size. With one example per category the per-slice numbers are shown but **not gated** (`slice_min_examples: 3`), because one example is noise, not evidence. See *Scaling this evaluation to production* below.
-- *"Who sets the thresholds?"* The model risk function, **before** looking at results. Moving a threshold after a FAIL is the classic governance smell, and here the policy fingerprint in every gate decision would show it.
-
-### 4. What could go wrong in real life
-> A lender's new chatbot model scored higher on average helpfulness and was approved. Nobody sliced by intent: on "dispute a transaction", the new model regressed sharply and began telling customers disputes were "not possible after 30 days". That was wrong, and a regulator complaint followed. A per-slice gate would have caught it.
-
-### 5. Checkpoint question
-*"v2 has higher helpfulness but its `redteam_pass_rate` dropped from 1.00 to 0.92, with a tolerance of 0.02. What does the gate say, and why is that the right call?"* (FAIL. Safety regressions are not traded for quality.)
-
-### Scaling this evaluation to production (tell students this explicitly)
-The demo keeps the **mechanics** of a production evaluation and shrinks the **volume**. The same code supports bigger runs. Switch `evaluation.profile` on the Policy page, and already-scored examples are reused because smaller profiles are subsets of bigger ones:
-
-| Profile | Examples per version | Judge calls per version | Free-tier time per version |
-|---|---|---|---|
-| `demo` (default) | 9 golden + 5 red-team | ~70 | ~8 min |
-| `lite` | 27 golden + 12 red-team | ~200 | ~30 min |
-| `full` | 130 golden + 12 red-team, toxicity and bias on everything | ~900 | hours; paid tier, or resume across days |
-
-What a real bank would add on top (none of it changes the pipeline shape; each is an extra metric or dataset):
-- **Hundreds to thousands of golden examples** per intent, refreshed from real anonymised conversations, with **confidence intervals** on every metric and significance tests on v1 vs v2.
-- A **larger red-team suite** (hundreds of attacks, multilingual, refreshed after every incident) and automated attack generation.
-- **Several judges or a judge panel**, calibrated against human-labelled samples, with judge-agreement metrics.
-- **Human review** of a random sample and of every borderline case.
-- **Faithfulness and grounding metrics** when the assistant uses retrieval (RAG) over bank documents.
-- **Fairness slices** (for example by language or customer segment) and **accessibility / readability** checks.
-- **Robustness tests:** typos, paraphrases, long conversations, multi-turn context.
-- **Load and soak tests** of latency and cost at production volume.
-
----
-
-## Stage 3 · Register the challenger (10 min)
-
-### 1. Concept
-A passing candidate gets an official identity in the registry, **linked to its evidence**: evaluation run, proposal, model card and approver. It is now a *challenger*, not yet a champion.
-
-*Analogy:* a new hire's employee file, holding the CV, interview notes, references and who signed the offer.
-
-*Why:* traceability. Two years from now, "why was this model allowed?" must be answerable from the registry alone.
-
-### 2. What to show
-1. **3 · Register challenger.** Read the alias explanation:
-   - MLflow deprecated the *Staging / Production / Archived* stages in 2.9.
-   - **Aliases** are named, movable pointers.
-   - Deployments resolve `models:/nova-assist@champion`.
-2. Click **Register v2 as nova-assist@challenger**. The new registry version appears with tags `eval_run_id`, `proposal_sha`, `model_card_sha` and `approved_by`.
-3. In MLflow → Models → nova-assist, show both aliases side by side. Open the registration run: the model card is attached as an artifact.
-
-### 3. Talking points and student questions
-- *"Why did MLflow drop stages?"* Real organisations have more than two roles (champion, challenger, shadow, retired, region-specific), and stage transitions were clumsy. Aliases are simple, many-to-one and atomic to move.
-- *"Registry version 2 vs our label v2?"* The registry counts every registration. `nova_version` is the business label. After a reset and re-run you will see registry version 3 tagged v2, which is normal.
-
-### 4. What could go wrong in real life
-> An insurer's audit found a production model with no record of who approved it. The model was fine, but the finding was "material weakness in model governance". The fix was exactly this: approval and evidence attached to the registry entry.
-
-### 5. Checkpoint question
-*"Which tag would you open first if an auditor asked how v2 was validated?"* (`eval_run_id`.)
-
----
-
-## Stage 4 · Shadow deployment (20 min)
-
-### 1. Concept
-v2 receives a **copy of real production traffic** but its answers are never shown to customers. We compare v2's answers with what v1 actually told customers.
-
-*Analogy:* a trainee pilot flying the simulator in sync with the real flight. Their inputs are recorded and compared, but they don't touch the controls.
-
-*Why:* golden sets are curated, while real traffic is messy (typos, slang, odd requests). Shadow mode finds the problems a curated exam misses, at **zero customer risk**.
-
-### 2. What to show
-1. **4 · Shadow.** As **ML Platform Lead**, fill in the approval form → *Approve: start shadow mirroring*. Then on **Overview → Models behind the gateway**, the `nova-assist` v1 deployment now shows `silent_model = nova-v2`. That is LiteLLM's native mirroring.
-2. Click **Send traffic** (1 REAL + 400 SIMULATED). The real one is a customer question from `data/replay.jsonl`, never seen in the golden set; it really goes to v1 and is really mirrored to v2 by LiteLLM.
-3. Watch the tiles fill. It takes about 20 seconds, mostly waiting for the real pair to be judged. The **Judged** tile says how many judgements were made by the real LLM judge, and the pairs table lists real pairs first.
-   - **Pairs:** each customer request matched to its mirrored v2 call from LiteLLM's spend logs.
-   - **Judged:** the judge compared both answers. A/B positions are randomised to counter **position bias**.
-   - **Win + tie rate:** the share of judgements where v2 was at least as good.
-   - **Critical violations:** v2 asked for a PIN, gave investment advice, and so on. Must be 0.
-   - **Challenger errors:** mirrored calls that failed or never arrived.
-4. Scroll through the pairs table and read one pair where v1 won, with its `verdict_reason`.
-5. If the judge flagged a **critical violation**, open it under *Human review of critical violations* and read it aloud. Is the judge right? As **Model Risk Officer**, confirm it or overturn it with a reason. While building this course, the judge flagged *"you may need to confirm a one-time code sent to your phone"* as asking for a code. It doesn't ask for one, and the reviewer overturned it. Unreviewed flags keep blocking the gate.
-6. Click **Check shadow gate**. A PASS automatically switches mirroring off; canary is a separate decision. A FAIL keeps you in shadow, and you can restart with a fresh window.
-
-### 3. Talking points and student questions
-- *"Does mirroring slow customers down?"* No. LiteLLM fires the silent call in the background, and all pairing and judging happens later in the worker, off the request path. Compare the latency tiles with Stage 0.
-- *"Why not just A/B test immediately?"* Shadow costs nothing in customer risk. Canary exposes real customers, so you want shadow evidence first.
-- *"Why are real requests throttled to 12/min?"* While building this course, we replayed 45 requests in 90 s. Groq rate-limited v2's mirrored calls, and LiteLLM drops failed silent calls without logging them, so the gate counted 11% challenger errors. That was a test-harness artefact, not model quality, and real replays are paced to provider limits for exactly this reason.
-- *"Why can a human overturn the judge?"* LLM judges make mistakes. Human oversight of automated decisions (EU AI Act Art. 14) applies to your evaluation tooling too. The override is never silent: who, why and when are in the audit log.
-- *"What does shadow NOT tell you?"* How customers react: follow-up questions, satisfaction, escalations. Only canary shows that.
-
-### 4. What could go wrong in real life
-> A telecom shadow-tested a new assistant but only logged the new model's answers, not the old ones. Without pairs they couldn't compare anything, and two weeks of shadow traffic were wasted. Here every pair is joined on a request ID that the gateway carries into both calls.
-
-### 5. Checkpoint question
-*"The shadow gate shows a 75% win+tie rate but 1 critical violation. Promote to canary?"* (No. `max_critical_violations: 0` is non-negotiable.)
-
----
-
-## Stage 5 · Canary deployment (20 min, including the rollback demo)
-
-### 1. Concept
-Send a **small slice of real customers** (5% here; 1–10% is common) to v2 and watch live metrics closely, ready to pull back at once.
-
-*Analogy:* the canary in the coal mine. A small, early exposure that warns you before everyone is affected.
-
-*Why:* EU AI Act Art. 72 (post-market monitoring) and SR 11-7 ongoing monitoring both expect live evidence, not just lab results.
-
-### 2. What to show
-1. **5 · Canary.** As **ML Platform Lead**, approve *send 5% of traffic to v2*. Overview now shows two `nova-assist` deployments, with weights 95 and 5. That is the LiteLLM router doing real weighted routing.
-2. Click **Send traffic** (1 real + 1,500 simulated). The real request is routed by the real LiteLLM weights, so it will almost always land on v1. The two metric blocks show **requests, error rate, p95 latency, judged quality and cost per request per version**. These come from LiteLLM's `LiteLLM_SpendLogs` (including failures that the fallback hid from customers) plus online judging.
-3. Point out that v2 gets about 5% of requests, roughly 75 of 1,500. If the gate says "not enough data", send more.
-4. The worker checks the gate **every 15 s**. Once there are ≥ 50 challenger requests and ≥ 30 judged samples, it records a decision on its own. If it shows "not enough data", send more traffic.
-
-**Rollback demo (do it here, honestly):**
-1. While the canary is live, before or after it passes, go to **Policy** as **Model Risk Officer**.
-2. Change `live_gate.max_p95_latency_ratio: 1.5` to `0.5`, bump `version: "1.0"` to `"1.1-demo"`, and give a reason ("Board demands v2 be twice as fast as v1"). Save. The diff goes into the audit log.
-3. Within 15 s the worker re-checks against **real** traffic, finds v2's p95 latency is more than 0.5× v1's, and **rolls back**: weights go to 100% v1, the stage becomes `rolled_back`, and the Canary page shows a red banner with the failing check.
-4. **Audit log** shows `INCIDENT_auto_rollback` by `governance-worker`, with the failed checks and the before/after weights.
-5. Restore the policy: put `1.5` back and set `version` to `"1.2"` with a reason. Then approve the canary again. Point out that the policy history now shows the whole episode.
-
-### 3. Talking points and student questions
-- *"Wasn't the rollback fake?"* No. Nothing was faked: the traffic is real, the latencies are real and the threshold is real. We changed the *policy*, which is what a board does when its risk appetite changes. The system enforced it automatically.
-- *"Why compare latency as a ratio to v1?"* Groq's speed varies through the day. A ratio within the same window cancels that out; an absolute number would cause false alarms.
-- *"Why did customers on v2 not see errors?"* The gateway falls back to v1. The gate still counts the v2 failure, because a hidden failure is still a failure.
-
-### 4. What could go wrong in real life
-> A bank rolled a new model to 100% on a Friday evening "because the canary looked fine". The canary had run for 20 minutes at 3 a.m. with 14 requests. On Monday morning the traffic mix changed, and the new model failed on mortgage questions it had never been sampled on. A minimum sample size in the gate prevents this.
-
-### 5. Checkpoint question
-*"Why does the gate refuse to decide when it has only 3 v2 requests, rather than passing them?"* (Missing evidence must never pass. That is `min_challenger_requests`.)
-
----
-
-## Stage 6 · Gradual rollout (15 min)
-
-### 1. Concept
-Increase exposure step by step: 25%, then 50%, then 100%. Every step has the same gate and an automatic rollback.
-
-*Analogy:* turning up the heat on a new recipe. Taste at every step, and you can always take it off the stove.
-
-*Why:* some problems only show up at scale: rate limits, cost and rare intents. Steps bound the blast radius.
-
-### 2. What to show
-1. **6 · Gradual rollout.** Approve *advance to 25%*. Send the suggested traffic (400 simulated) and watch the gate pass on its own within 15 s.
-2. Repeat for **50%** (300 simulated) and **100%** (1 real + 200 simulated). The real request at 100% is answered by v2 and judged for real.
-   - At 100% there is no v1 traffic in the window, so the latency and cost ratios compare against **the champion's metrics captured in the canary window**. The check name says so.
-3. The **Gate history** table lists every decision with its policy version. Read it like an audit timeline.
-4. Optional: click **Manual rollback** at 50% to show the operator path. It creates a `rollback` audit entry with your name. You would then restart from the Canary page.
-
-### 3. Talking points and student questions
-- *"Who approves each step?"* A person approves each traffic increase; the system can only *decrease* exposure on its own (rollback). Automation reduces risk and people accept it. That is the human-oversight principle (EU AI Act Art. 14).
-- *"Are these numbers real?"* Only the rows marked real. The rest come from the classroom simulator: the gates and the rollback are real, the bulk traffic is not. A bank would run each step for hours or days on real customers.
-- *"Why 25/50/100?"* They are policy values (`rollout.steps`), and some companies use 1/5/25/100. What matters is that the steps are decided in advance.
-
-### 4. What could go wrong in real life
-> A payments company jumped from 5% to 100% because the 5% "looked great". At full traffic, the new model's longer answers tripled token spend and blew the monthly budget in nine days. The cost-ratio check stops exactly this, and LiteLLM's per-key budgets put a hard ceiling under it.
-
-### 5. Checkpoint question
-*"The rollout is at 50% and the error rate check fails at 2.5%. What happens in the next 15 seconds, without anyone clicking?"* (Automatic rollback to 100% v1, plus an incident in the audit log.)
-
----
-
-## Stage 7 · Promotion, retirement and continuous governance (10 min)
-
-### 1. Concept
-With all gates passed at 100%, make it official: v2 becomes **champion**, and v1 is **retired but kept** for rollback. Then write the report, and keep re-checking the champion over time, because models and providers drift.
-
-*Analogy:* the new hire passes probation and gets a permanent contract. The old employee's records are archived, not shredded. Annual reviews continue.
-
-*Why:* SR 11-7 ongoing monitoring; EU AI Act Art. 12 (record-keeping) and Art. 72; ISO 42001 performance evaluation and continual improvement.
-
-### 2. What to show
-1. **7 · Promotion & monitoring.** As **Governance Board**, approve *promote v2 to @champion, retire v1*. The registry table now shows:
-   - v2 = `champion`, status `production`
-   - v1 = `retired`, alias `@retired`
-   - The production route is 100% v2 with no challenger.
-2. Click **Generate governance report**. The Markdown appears on screen, is saved in `reports/`, and is logged to MLflow. Walk through its sections:
-   - proposal
-   - registry
-   - offline metrics side by side, with the gate
-   - shadow stats
-   - every gate decision with its policy version (including the rollback incident)
-   - the traffic timeline with approvals
-   - the full audit trail, with the **hash chain verified INTACT**
-3. **Run drift check now** re-evaluates the champion and compares it with its reference evaluation (allowed drop: 0.05). It is simulated in classroom mode and finishes in seconds. Set `simulation.drift_shift: -0.10` on the Policy page first to show a detection. In production this is a scheduled job, for example nightly.
-4. **Audit log** page: click **Try to edit history**. Postgres refuses the edit because the table is append-only.
-
-### 3. Talking points and student questions
-- *"Why not delete v1?"* Rollback must stay one click away, and auditors need to reproduce past decisions. Retire, don't delete.
-- *"What causes drift if the model weights don't change?"* Several things: the provider updates the model behind the same ID, the judge changes, customer questions change (new products, seasonal topics), or the prompt or policy changes. Drift checks catch all of these.
-- *"Is the hash chain blockchain?"* No. It is the same idea at a small scale: each entry's hash includes the previous entry's hash, so changing any old entry breaks every later hash, and the console detects it.
-
-### 4. What could go wrong in real life
-> A provider silently updated a model behind an unchanged model ID. A bank's assistant became noticeably more verbose and started recommending "speaking to an adviser about investing" in situations it shouldn't. Only a team with a scheduled re-evaluation against a fixed golden set noticed within a week. Others found out from customer complaints.
-
-### 5. Checkpoint question
-*"Name three pieces of evidence from today that you would hand to an auditor."* (Examples: the approved proposal with its SHA, the MLflow evaluation runs, the gate decisions with policy fingerprints, the audit log hash verification, the governance report.)
-
----
+To run everything for real, set `simulation.enabled: false` and size the volumes to your quota (the `demo` exam profile is 14 examples, about 8 min per model on the Groq free tier).
 
 ## Glossary
 
 | Term | Meaning |
 |---|---|
-| **Champion** | The model version currently serving production (`@champion` alias) |
-| **Challenger** | A candidate version trying to replace the champion (`@challenger`) |
-| **Gate** | An automated pass/fail check with thresholds fixed in advance (`governance/policy.yaml`) that must pass before the next stage |
-| **Shadow deployment** | The challenger receives a copy of real traffic; its answers are recorded and compared but never shown to users |
-| **Canary** | A small share of real users is served by the challenger while metrics are watched |
-| **Gradual rollout** | Exposure increases in steps, with a gate and automatic rollback at each step |
+| **Champion** | The model version serving production (`@champion`) |
+| **Challenger** | The selected candidate trying to replace the champion (`@challenger`) |
+| **Candidate** | A model proposed for evaluation; at most one becomes the challenger |
+| **Gate** | A pass/fail check with thresholds fixed in advance (`policy.yaml`) |
+| **Shadow deployment** | The challenger receives a silent copy of real traffic; its answers are never shown to customers |
+| **Canary** | A small share of real customers is served by the challenger while metrics are watched |
+| **Gradual rollout** | Exposure grows in pre-agreed steps, each with a gate and automatic rollback |
 | **Rollback** | Returning traffic to the champion; automatic on any gate breach |
 | **Model card** | A short document on a model's intended use, limits, evaluation and risks |
-| **Audit trail** | An append-only record of who did what, when, why and with what evidence |
-| **LLM-as-a-judge** | Using an LLM, ideally a different model from the ones under test, to score or compare answers against a rubric |
-| **Drift** | Change in a model's behaviour or quality over time, caused by the model, the data, the prompt, the judge or the world |
-| **Golden set** | A fixed, versioned set of inputs with reference answers used to compare versions fairly |
-| **Red-team set** | Adversarial and high-risk inputs that test safety behaviour |
-| **Slice** | A subset of evaluation data (here, a category or intent), compared separately so averages cannot hide regressions |
-| **Virtual key** | A gateway API key with its own model allow-list, rate limit and budget |
+| **Audit trail** | Append-only record of who did what, when, why and with what evidence |
+| **LLM-as-a-judge** | Using an LLM, ideally from another model family, to score or compare answers |
+| **Drift** | A change in a model's behaviour or quality over time |
+| **Golden set / red-team set** | Fixed real questions with references / adversarial inputs that test safety |
+| **Slice** | A subset of the evaluation (here an intent) compared on its own so averages can't hide regressions |
 
-## Recap slide outline (5 slides)
+## Recap slides (5)
 
 1. **The question:** how does a company decide which model goes to production, prove it, roll it out with control, and keep a trail?
-2. **The lifecycle:** Baseline → Proposal → Offline eval → Registry → Shadow → Canary → Rollout → Promotion, plus drift checks. Every arrow is a gate.
-3. **Evidence over opinion:** thresholds written before the results; same golden set for both versions; slices; an independent judge; real traffic.
-4. **Control:** one gateway, least-privilege keys, people approve increases while the system can only decrease exposure, automatic rollback, retire don't delete.
-5. **Trail:** proposal SHA, MLflow runs and tags, gate decisions with policy fingerprints, a hash-chained audit log, and a generated report. Map each item to SR 11-7, NIST AI RMF, the EU AI Act and ISO 42001.
+2. **The story in one line:** proposal (2 candidates) → exam (1 passes) → registration → shadow week → canary week → weekly rollout → promotion, plus weekly drift checks.
+3. **Evidence over opinion:** thresholds set before results; the same exam for everyone; per-intent slices; an independent judge; human review of the judge.
+4. **Control:** one gateway, least-privilege keys, people approve increases, machines only decrease exposure, automatic rollback, retire don't delete.
+5. **Trail:** proposal hashes, MLflow runs and tags, gate decisions with policy fingerprints, a hash-chained audit log and a generated report, mapped to SR 11-7, NIST AI RMF, the EU AI Act and ISO 42001.
 
 ## Take-home exercise
 
-**Propose v3 and defend your decision.**
-1. Copy `proposals/nova-assist-v2.yaml` to `nova-assist-v3.yaml`. Propose a change you can test with the routes that exist, for example *"v3 = v1 with a stricter system prompt"*, by editing `governance/policy.md` (a new prompt version), or by changing generation parameters in `policy.yaml`.
-2. Change **one threshold** in `policy.yaml` and write two sentences justifying it as if to the risk committee.
-3. Reset the demo and run the pipeline to promotion or rollback.
-4. Submit:
-   - your proposal,
-   - the generated governance report,
-   - and one paragraph: *Would you sign off this change as Model Risk Officer? Which single piece of evidence convinced you, and what evidence is still missing?*
+**Write the next chapter.** NovaBank's fraud team proposes **v4 = Nova with a stricter system prompt**.
+1. Copy `proposals/nova-assist-upgrade.yaml`, propose your candidate, and change **one threshold** in `policy.yaml` with a two-sentence justification to the risk committee.
+2. Reset to Week 0 and run the story to promotion or rollback.
+3. Submit your proposal, the generated governance report, and one paragraph: *As Model Risk Officer, would you sign this off? Which single piece of evidence convinced you, and what evidence is still missing?*
 
-Grading hint: reward students who notice the limits of their own evidence (judge noise, small samples, generic references) over students whose run simply passed.
+Reward students who name the limits of their own evidence (simulated volumes, judge noise, sample size) over students whose run simply passed.

@@ -1,15 +1,15 @@
-# Model card: Nova Assist v2
+# Model card: Nova Assist v2 "Atlas" (candidate)
 
 | Field | Value |
 |---|---|
 | System | Nova Assist, NovaBank customer-support assistant |
-| Version | v2 (challenger), registered model `nova-assist`, alias `@challenger` until promotion |
+| Version | v2 (candidate in proposal MCP-2026-014, alongside v3 "Sentinel"); registered as `@challenger` only if selected |
 | Provider model | `openai/gpt-oss-120b` served by Groq, called only through the LiteLLM route `nova-v2` |
 | Base model licence | Apache-2.0 (open-weight gpt-oss release) |
 | System prompt | `governance/policy.md`, versioned in the MLflow Prompt Registry as `nova-assist-system` |
 | Parameters | temperature 0.2, max_tokens 1024, reasoning_effort low |
 | Owner | Priya Raman (Product Owner); technical owner Tomás Okafor (ML Platform Lead) |
-| Proposal | `proposals/nova-assist-v2.yaml` (MCP-2026-014) |
+| Proposal | `proposals/nova-assist-upgrade.yaml` (MCP-2026-014) |
 
 ## Intended use
 Answering retail-banking support questions (cards, accounts, transfers, loans, mortgages, ATMs, fees, passwords). The assistant explains how to complete a task in NovaBank's channels and escalates to humans for fraud or when it is unsure.

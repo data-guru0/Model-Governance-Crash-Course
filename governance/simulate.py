@@ -41,12 +41,14 @@ def _score(rng: random.Random, mean_sd: list[float], shift: float = 0.0) -> floa
     return round(max(0.0, min(1.0, rng.gauss(mean + shift, sd))), 3)
 
 
-def _usage(rng: random.Random, version: str) -> tuple[float, int, int, float]:
-    """Synthetic latency (lognormal), tokens and cost priced with the route's real per-token prices."""
-    p = cfg()["versions"][version]
+def _usage(rng: random.Random, version: str, conf: dict | None = None) -> tuple[float, int, int, float]:
+    """Synthetic latency (lognormal), tokens and cost priced with the route's real per-token prices.
+    `conf` lets bulk callers pass the config once (each file read costs ~1 ms on a Docker bind mount)."""
+    conf = conf or {"sim": cfg(), "prices": {version: core.route_params(core.route_for(version))}}
+    p = conf["sim"]["versions"][version]
     latency = p["latency_p50_ms"] * math.exp(rng.gauss(0, p["latency_sigma"]))
     completion = max(20, int(rng.gauss(p["completion_tokens"], p["completion_tokens"] * 0.2)))
-    prices = core.route_params(core.route_for(version))
+    prices = conf["prices"][version]
     cost = p["prompt_tokens"] * prices["input_cost_per_token"] + completion * prices["output_cost_per_token"]
     return latency, p["prompt_tokens"], completion, cost
 
@@ -64,37 +66,52 @@ def eval_example(ex: dict, version: str, metric_names: list[str], tag: str, shif
 
 
 # --------------------------------------------------------------------------- live traffic
+WEEKDAY_SHAPE = [1.10, 1.15, 1.10, 1.05, 1.00, 0.70, 0.60]   # Mon..Sun: banks are busier on weekdays
+
+
+def story_week(stage: str) -> int:
+    """Which week of the story a lifecycle stage belongs to (policy.yaml story.weeks)."""
+    weeks = core.policy()["story"]["weeks"]
+    base = stage.removesuffix("_passed").removesuffix("_failed")
+    key = {"proposal_submitted": "proposal", "proposal_approved": "proposal", "proposal_rejected": "proposal",
+           "offline_evaluating": "offline_evaluation", "offline": "offline_evaluation",
+           "challenger_registered": "registration", "promoted": "promotion", "rolled_back": "canary"}.get(base, base)
+    return weeks.get(key, 0)
+
+
 def traffic(n: int) -> dict:
     """Insert n simulated production requests into the CURRENT traffic window, split by the
     current gateway weights. In shadow mode each request also gets a simulated shadow pair."""
     if n <= 0:
         return {"simulated": 0}
     lc = core.lifecycle()
-    champion = lc.get("champion", "v1")
-    challenger = "v2" if champion == "v1" else "v1"
-    weights = {champion: 100 - lc.get("v2_weight", 0), challenger: lc.get("v2_weight", 0)} \
-        if champion == "v1" else {champion: 100, challenger: 0}
+    champion, challenger = lc.get("champion", "v1"), lc.get("challenger")
+    share = lc.get("challenger_weight", 0) if challenger else 0
+    weights = {champion: 100 - share, **({challenger: share} if challenger else {})}
     rows = [json.loads(x) for x in (core.ROOT / "data" / "replay.jsonl").read_text(encoding="utf-8").splitlines() if x]
     offset = core.get_state("sim_offset", 0)
     core.set_state("sim_offset", offset + n)
-    rng = _rng(f"traffic:{lc['window']}:{offset}")
     s = cfg()
+    rng = random.Random(f"{s['seed']}:traffic:{lc['window']}:{offset}")
+    conf = {"sim": s, "prices": {v: core.route_params(core.route_for(v)) for v in weights}}
+    week = story_week(lc["stage"])
     requests, pairs, by_version = [], [], {}
     for i in range(n):
         ex = rows[(offset + i) % len(rows)]
         version = champion if lc.get("shadow") else rng.choices(list(weights), weights=list(weights.values()))[0]
         by_version[version] = by_version.get(version, 0) + 1
-        latency, prompt_t, completion_t, cost = _usage(rng, version)
+        latency, prompt_t, completion_t, cost = _usage(rng, version, conf)
         failed = rng.random() < s["versions"][version]["error_rate"]
         rid = f"sim-{uuid.uuid4()}"
-        requests.append((rid, lc["window"], ex["intent"], ex["category"], ex["input"],
+        day = week * 7 + rng.choices(range(7), WEEKDAY_SHAPE)[0]
+        requests.append((rid, lc["window"], day, ex["intent"], ex["category"], ex["input"],
                          None if failed else "[simulated answer]", version, "simulated", latency, prompt_t,
                          completion_t, cost, "simulated provider error" if failed else None,
                          None if failed else _score(rng, s["versions"][version]["live_quality"]),
                          "simulated"))
         if lc.get("shadow") and not failed:
             sh = s["shadow"]
-            c_lat, _, c_comp, c_cost = _usage(rng, challenger)
+            c_lat, _, c_comp, c_cost = _usage(rng, challenger, conf)
             mirror_failed = rng.random() < sh["mirror_error_rate"]
             verdict = rng.choices(["challenger", "tie", "champion"],
                                   [sh["challenger_win"], sh["tie"], 1 - sh["challenger_win"] - sh["tie"]])[0]
@@ -107,16 +124,19 @@ def traffic(n: int) -> dict:
                           None if mirror_failed else c_cost, "simulated mirror failure" if mirror_failed else None,
                           None if mirror_failed else verdict, None if mirror_failed else "simulated judgement",
                           None if mirror_failed else violation))
-    with core.db() as conn:
-        with conn.cursor() as cur:
-            cur.executemany("""INSERT INTO governance.requests (request_id, stage, intent, category, prompt, response,
-                                 model_version, model_id, latency_ms, prompt_tokens, completion_tokens, cost_usd,
-                                 error, quality_score, quality_reason, simulated)
-                               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,true)""", requests)
-            if pairs:
-                cur.executemany("""INSERT INTO governance.shadow_pairs (request_id, intent, prompt, champion_response,
-                                     challenger_response, champion_latency_ms, challenger_latency_ms, champion_tokens,
-                                     challenger_tokens, champion_cost_usd, challenger_cost_usd, challenger_error,
-                                     verdict, verdict_reason, challenger_violation, judged_at, simulated)
-                                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now(),true)""", pairs)
+    # COPY is Postgres's bulk loader: a simulated week (10k rows + pairs) loads in about a second.
+    with core.db() as conn, conn.cursor() as cur:
+        with cur.copy("""COPY governance.requests (request_id, stage, story_day, intent, category, prompt, response,
+                           model_version, model_id, latency_ms, prompt_tokens, completion_tokens, cost_usd, error,
+                           quality_score, quality_reason, simulated) FROM STDIN""") as copy:
+            for row in requests:
+                copy.write_row((*row, True))
+        if pairs:
+            with cur.copy("""COPY governance.shadow_pairs (request_id, intent, prompt, champion_response,
+                               challenger_response, champion_latency_ms, challenger_latency_ms, champion_tokens,
+                               challenger_tokens, champion_cost_usd, challenger_cost_usd, challenger_error, verdict,
+                               verdict_reason, challenger_violation, judged_at, simulated) FROM STDIN""") as copy:
+                judged_at = core.now()
+                for row in pairs:
+                    copy.write_row((*row, judged_at, True))
     return {"simulated": n, "by_version": by_version, "shadow_pairs": len(pairs)}

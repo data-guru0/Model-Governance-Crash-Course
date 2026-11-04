@@ -27,7 +27,7 @@ def test_app_answers_through_gateway_and_logs_version():
     r = httpx.post(f"{core.APP_URL}/chat", json={"message": "How do I check my card balance?"}, timeout=120)
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["answer"] and body["model_version"] in ("v1", "v2")
+    assert body["answer"] and body["model_version"] in ("v1", "v2", "v3")
     for _ in range(20):  # the app logs after responding (off the customer path), so allow a moment
         rows = core.query("SELECT model_version, cost_usd FROM governance.requests WHERE request_id = %s",
                           (body["request_id"],))
@@ -47,7 +47,7 @@ def test_registry_has_champion_alias_with_lineage_tags():
     v = lifecycle.alias_version("champion")
     assert v
     tags = next(x["tags"] for x in lifecycle.registry_versions() if x["version"] == v)
-    assert tags["nova_version"] in ("v1", "v2") and tags["prompt_uri"].startswith("prompts:/")
+    assert tags["nova_version"] in ("v1", "v2", "v3") and tags["prompt_uri"].startswith("prompts:/")
     assert tags["gateway_route"] == core.route_for(tags["nova_version"])
 
 
@@ -84,14 +84,17 @@ def test_rollback_restores_champion_only():
     if lc["stage"] not in ("baseline", "promoted", "rolled_back"):
         pytest.skip(f"lesson in progress (stage {lc['stage']}); not touching live traffic")
     champion = lc.get("champion", "v1")
+    other = "v2" if champion != "v2" else "v1"
     try:
-        core.set_traffic(50, champion=champion)
-        assert core.current_weights() == {"v1": 50, "v2": 50}
+        core.set_traffic(50, champion=champion, challenger=other)
+        weights = core.current_weights()
+        assert weights[champion] == 50 and weights[other] == 50
         lifecycle.rollback("integration-test", "test: rollback restores champion")
         assert core.current_weights()[champion] == 100
     finally:
-        core.set_traffic(0, champion=champion)
-        core.set_lifecycle(**{k: lc.get(k) for k in ("stage", "v2_weight", "shadow", "window", "champion")})
+        core.set_traffic(0, champion=champion, challenger=lc.get("challenger"))
+        core.set_lifecycle(**{k: lc.get(k) for k in ("stage", "challenger_weight", "shadow", "window", "champion",
+                                                     "challenger")})
 
 
 def test_console_api_and_ui_serve():

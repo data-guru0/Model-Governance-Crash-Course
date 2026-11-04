@@ -2,7 +2,8 @@
 #
 # Fixed routes, one per model version. Model IDs were confirmed against Groq's /models endpoint.
 #   nova-v1    -> champion at the start of the scenario
-#   nova-v2    -> challenger proposed by the product team
+#   nova-v2    -> candidate "Atlas" proposed by the product team (larger model)
+#   nova-v3    -> candidate "Sentinel" proposed by the product team (safety-tuned model)
 #   nova-judge -> LLM-as-a-judge, used only for evaluation (different model family)
 #
 # The production route "nova-assist" is NOT defined here. The governance console creates its
@@ -32,6 +33,16 @@ model_list:
       output_cost_per_token: 0.0000006    # $0.60 / 1M
     model_info:
       nova_version: v2
+
+  - model_name: nova-v3
+    litellm_params:
+      model: groq/openai/gpt-oss-safeguard-20b
+      api_key: os.environ/GROQ_API_KEY
+      reasoning_effort: low
+      input_cost_per_token: 0.000000075   # $0.075 / 1M
+      output_cost_per_token: 0.0000003    # $0.30 / 1M
+    model_info:
+      nova_version: v3
 
   - model_name: nova-judge
     litellm_params:

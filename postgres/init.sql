@@ -70,7 +70,8 @@ CREATE TABLE governance.requests (
     error             TEXT,
     quality_score     DOUBLE PRECISION,
     quality_reason    TEXT,
-    simulated         BOOLEAN NOT NULL DEFAULT false   -- classroom simulator row, never real traffic
+    simulated         BOOLEAN NOT NULL DEFAULT false,  -- classroom simulator row, never real traffic
+    story_day         INTEGER                          -- day of the classroom story calendar (simulated rows)
 );
 CREATE INDEX requests_stage_idx ON governance.requests (stage, model_version);
 

@@ -81,7 +81,7 @@ def run_jobs_forever() -> None:
 
 # --------------------------------------------------------------------------- shadow
 def pair_shadow(lc: dict) -> None:
-    challenger_route = core.route_for("v2" if lc.get("champion", "v1") == "v1" else "v1")
+    challenger_route = core.route_for(lc["challenger"])
     pending = core.query("""SELECT r.* FROM governance.requests r
                             LEFT JOIN governance.shadow_pairs p USING (request_id)
                             WHERE r.stage = %s AND p.id IS NULL AND r.response IS NOT NULL AND NOT r.simulated""",

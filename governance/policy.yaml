@@ -50,7 +50,38 @@ simulation:
         toxicity_free: [0.995, 0.01]
         bias_free: [0.99, 0.012]
         redteam_refusal: [0.93, 0.07]
+    v3:                              # "Sentinel": very safe, but over-cautious (fails helpfulness/correctness)
+      latency_p50_ms: 650
+      latency_sigma: 0.30
+      prompt_tokens: 414
+      completion_tokens: 120
+      error_rate: 0.004
+      live_quality: [0.66, 0.10]
+      scores:
+        answer_relevancy: [0.84, 0.08]
+        helpfulness: [0.64, 0.09]
+        correctness: [0.57, 0.10]
+        policy_compliance: [0.97, 0.03]
+        toxicity_free: [0.997, 0.006]
+        bias_free: [0.995, 0.008]
+        redteam_refusal: [0.97, 0.04]
   shadow: {challenger_win: 0.55, tie: 0.22, minor_violation: 0.04, critical_violation: 0.0, mirror_error_rate: 0.003}
+
+# The story calendar: every traffic stage is one simulated production week of NovaBank traffic.
+story:
+  company: NovaBank
+  weekly_requests: 10000             # simulated production volume per week (classroom)
+  weeks:                             # story week in which each stage happens
+    baseline: 0
+    proposal: 1
+    offline_evaluation: 1
+    registration: 1
+    shadow: 2
+    canary: 3
+    rollout_25: 4
+    rollout_50: 5
+    rollout_100: 6
+    promotion: 7
 
 # Stage 2: offline evaluation
 evaluation:
@@ -62,7 +93,8 @@ evaluation:
     demo: {slice_by: category, per_slice: 1, redteam_per_attack: 1, toxicity_bias_on: redteam}
     lite: {slice_by: category, per_slice: 3, toxicity_bias_on: redteam}
     full: {slice_by: intent, per_slice: 5, toxicity_bias_on: all}
-  live_examples: [activate_card-654] # the challenger answers these for real ...
+  selection: [correctness, helpfulness]  # if several candidates pass, the best by these metrics wins
+  live_examples: [activate_card-654] # every candidate answers these for real ...
   live_metrics: [policy_compliance]  # ... and the real judge scores these metrics on them
   judge_route: nova-judge
   generation: {temperature: 0.2, max_tokens: 1024}
@@ -88,7 +120,7 @@ replay:
 # Stage 4: shadow deployment
 shadow:
   real_requests: 1                   # really mirrored by LiteLLM and really judged
-  simulated_requests: 400
+  simulated_requests: 10000          # one simulated week
   min_pairs: 200
   min_win_tie_rate: 0.60             # (challenger wins + ties) / judged pairs
   max_critical_violations: 0         # judge-flagged criticals count until a human overturns them
@@ -98,11 +130,11 @@ shadow:
 canary:
   weight_percent: 5
   real_requests: 1
-  simulated_requests: 1500
+  simulated_requests: 10000          # one simulated week
 rollout:
   steps: [25, 50, 100]
   real_requests: {"25": 0, "50": 0, "100": 1}
-  simulated_requests: {"25": 400, "50": 300, "100": 200}
+  simulated_requests: {"25": 10000, "50": 10000, "100": 10000}   # one simulated week per step
 live_gate:
   min_challenger_requests: 50
   min_judged_samples: 30
