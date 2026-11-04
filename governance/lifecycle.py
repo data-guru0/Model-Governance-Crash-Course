@@ -17,7 +17,7 @@ import mlflow
 import yaml
 from mlflow import MlflowClient
 
-from governance import core
+from governance import core, simulate
 
 PROPOSAL_FILE = core.ROOT / "proposals" / "nova-assist-v2.yaml"
 MODEL_CARD_FILE = core.ROOT / "proposals" / "model-card-nova-assist-v2.md"
@@ -197,17 +197,6 @@ def job_baseline_eval(job_id: int, actor: str) -> dict:
     return {"run_id": result["run_id"], "overall": result["overall"]}
 
 
-def job_prescore(job_id: int, version: str, actor: str) -> dict:
-    """Background warm-up: score a candidate on the golden set so the governed Stage 2 run (which
-    makes the gate decision and writes the MLflow evidence) doesn't keep a class waiting."""
-    from evaluation.run_eval import run_evaluation
-
-    out = run_evaluation(version, "prescore", actor, job_id, prescore=True)
-    core.audit(actor, "offline_evaluation", "candidate_prescored", None,
-               {"version": version, "examples": out["scored"], "note": "scores cached; no gate decision"})
-    return out
-
-
 def job_offline_eval(job_id: int, actor: str) -> dict:
     from evaluation.run_eval import offline_gate, run_evaluation
 
@@ -215,7 +204,9 @@ def job_offline_eval(job_id: int, actor: str) -> dict:
     core.set_lifecycle(stage="offline_evaluating")
     try:
         champion = run_evaluation("v1", "offline-eval", actor, job_id)
-        challenger = run_evaluation("v2", "offline-eval", actor, job_id)
+        # The live sample: a few real answers + real judge calls for the challenger (see policy.yaml).
+        challenger = run_evaluation("v2", "offline-eval", actor, job_id,
+                                    live_ids=core.policy()["evaluation"]["live_examples"])
     except Exception:
         core.set_lifecycle(stage="proposal_approved")  # evidence incomplete: no decision, can resume
         raise
@@ -316,8 +307,9 @@ def rollback(actor: str, reason: str, checks: list[dict] | None = None) -> None:
 
 
 # --------------------------------------------------------------------------- replay (job)
-def job_replay(job_id: int, count: int, actor: str) -> dict:
-    """Send real replay-set requests through the production app (exactly like customers would)."""
+def job_replay(job_id: int, count: int, actor: str, simulated: int = 0) -> dict:
+    """Send `count` REAL replay-set requests through the production app (exactly like customers
+    would), then add `simulated` synthetic requests to the same traffic window (classroom volume)."""
     rows = [json.loads(x) for x in (core.ROOT / "data" / "replay.jsonl").read_text(encoding="utf-8").splitlines() if x]
     offset = core.get_state("replay_offset", 0)
     batch = [rows[(offset + i) % len(rows)] for i in range(count)]
@@ -350,6 +342,8 @@ def job_replay(job_id: int, count: int, actor: str) -> dict:
             time.sleep(interval)
         for f in futures:
             f.result()
+    stats["simulated"] = simulate.traffic(simulated) if simulated else {"simulated": 0}
+    core.job_progress(job_id, f"{stats['ok']} real + {simulated} simulated requests; real by version {stats['by_version']}")
     return stats
 
 
@@ -368,6 +362,8 @@ def shadow_stats(window: str) -> dict:
         return statistics.fmean(vals) if vals else None
 
     return {"pairs": len(rows), "judged": len(judged), "challenger_wins": wins, "ties": ties,
+            "real_pairs": sum(not r["simulated"] for r in rows), "real_judged": sum(not r["simulated"] for r in judged),
+            "simulated_pairs": sum(r["simulated"] for r in rows),
             "champion_wins": sum(r["verdict"] == "champion" for r in judged),
             "win_tie_rate": (wins + ties) / len(judged) if judged else None,
             "critical_violations": sum(r["challenger_violation"] == "critical" and r["review_decision"] != "overturned"
@@ -400,27 +396,31 @@ def shadow_gate(actor: str) -> tuple[bool, list[dict], dict]:
 
 # --------------------------------------------------------------------------- Stages 5-6 live gate
 def live_stats(window: str) -> dict:
-    """Per-version live metrics for one traffic window, from LiteLLM's own spend/request logs
-    (errors, latency, cost) plus online-judge scores stored by the worker (quality)."""
-    route = _cfg()["production_route"]
-    logs = core.query("""SELECT model, status, spend,
-                                EXTRACT(EPOCH FROM ("endTime" - "startTime")) * 1000 AS ms
-                         FROM "LiteLLM_SpendLogs"
-                         WHERE model_group = %s AND request_tags::jsonb ? %s""",
-                      (route, f"stage:{window}"), conn_factory=core.litellm_db)
-    quality = core.query("""SELECT model_version, quality_score FROM governance.requests
-                            WHERE stage = %s AND quality_score IS NOT NULL""", (window,))
+    """Per-version live metrics for one traffic window.
+    Requests, latency, cost and quality come from the app's request log (real + simulated rows);
+    on top, LiteLLM's spend logs add real failures the customer never saw because the gateway
+    fell back to the champion. Those count against the version that failed."""
+    reqs = core.query("""SELECT model_version, latency_ms, cost_usd, error, quality_score, simulated
+                         FROM governance.requests WHERE stage = %s AND model_version IS NOT NULL""", (window,))
+    hidden = core.query("""SELECT model, COUNT(*) AS n FROM "LiteLLM_SpendLogs"
+                           WHERE model_group = %s AND status <> 'success' AND request_tags::jsonb ? %s
+                           GROUP BY model""", (_cfg()["production_route"], f"stage:{window}"),
+                        conn_factory=core.litellm_db)
     out = {}
     for v in ("v1", "v2"):
         provider = core.route_params(core.route_for(v))["model"]
-        rows = [r for r in logs if r["model"] == provider]
-        ok = [r for r in rows if r["status"] == "success"]
-        q = [r["quality_score"] for r in quality if r["model_version"] == v]
-        lat = sorted(float(r["ms"]) for r in ok)
-        out[v] = {"requests": len(rows), "failures": len(rows) - len(ok),
-                  "error_rate": (len(rows) - len(ok)) / len(rows) if rows else None,
+        rows = [r for r in reqs if r["model_version"] == v]
+        ok = [r for r in rows if not r["error"]]
+        hidden_failures = sum(h["n"] for h in hidden if h["model"] == provider)
+        total = len(rows) + hidden_failures
+        failures = len(rows) - len(ok) + hidden_failures
+        q = [r["quality_score"] for r in ok if r["quality_score"] is not None]
+        lat = sorted(float(r["latency_ms"]) for r in ok)
+        out[v] = {"requests": total, "real": sum(not r["simulated"] for r in rows),
+                  "simulated": sum(r["simulated"] for r in rows), "failures": failures,
+                  "error_rate": failures / total if total else None,
                   "p95_latency_ms": lat[min(len(lat) - 1, int(round(0.95 * (len(lat) - 1))))] if lat else None,
-                  "cost_per_request_usd": statistics.fmean(float(r["spend"]) for r in ok) if ok else None,
+                  "cost_per_request_usd": statistics.fmean(float(r["cost_usd"]) for r in ok) if ok else None,
                   "judged": len(q), "quality": statistics.fmean(q) if q else None}
     return out
 
@@ -500,14 +500,18 @@ def job_drift(job_id: int, actor: str) -> dict:
 
     champion = core.lifecycle().get("champion", "v1")
     ref = core.get_state(f"reference_eval.{champion}")
-    current = run_evaluation(champion, "drift-check", actor, job_id, fresh=True,
-                             golden_limit=core.policy()["drift"]["probe_examples"])
+    if simulate.enabled():  # full golden set, simulated; `simulation.drift_shift` lets you inject drift
+        current = run_evaluation(champion, "drift-check", actor, job_id, sim_shift=simulate.cfg()["drift_shift"])
+    else:  # small real probe, compared like-for-like on the same examples
+        current = run_evaluation(champion, "drift-check", actor, job_id, fresh=True,
+                                 golden_limit=core.policy()["drift"]["probe_examples"])
     if not ref:
         core.set_state(f"reference_eval.{champion}", current)
         core.audit(actor, "continuous_governance", "drift_reference_set", None,
                    {"champion": champion, "run_id": current["run_id"]})
         return {"reference_set": True, "run_id": current["run_id"]}
-    checks = drift_check(current["overall"], reference_subset(ref["run_key"], current["example_ids"]))
+    reference = ref["overall"] if simulate.enabled() else reference_subset(ref["run_key"], current["example_ids"])
+    checks = drift_check(current["overall"], reference)
     passed = core.record_gate("continuous_governance", checks,
                               {"champion": champion, "run_id": current["run_id"], "reference_run": ref["run_id"]}, actor)
     client().set_tag(current["run_id"], "drift_gate", "PASS" if passed else "DRIFT")

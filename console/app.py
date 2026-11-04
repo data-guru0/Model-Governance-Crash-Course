@@ -110,16 +110,20 @@ def traffic_metrics(window: str) -> dict:
             c.metric("p95 latency", "–" if s["p95_latency_ms"] is None else f"{s['p95_latency_ms']:.0f} ms")
             d.metric("Quality (judged)", "–" if s["quality"] is None else f"{s['quality']:.2f} (n={s['judged']})")
             st.caption("Cost / request: " + ("–" if s["cost_per_request_usd"] is None
-                                             else f"${s['cost_per_request_usd']:.6f}"))
+                                             else f"${s['cost_per_request_usd']:.6f}")
+                       + f" · **{s['real']} real** + {s['simulated']} simulated requests")
     return stats
 
 
-def replay_button(default: int, label: str = "Send replay traffic") -> None:
-    n = st.number_input("Requests to replay (real customer questions from data/replay.jsonl)",
-                        min_value=1, max_value=208, value=default, key=f"n-{label}")
+def replay_button(real: int, simulated: int, label: str = "Send traffic") -> None:
+    c1, c2 = st.columns(2)
+    n = c1.number_input("REAL requests (real Groq calls through the app)", min_value=0, max_value=50,
+                        value=real, key=f"n-{label}")
+    m = c2.number_input("SIMULATED requests (no LLM calls, labelled simulated)", min_value=0, max_value=5000,
+                        value=simulated, key=f"m-{label}")
     if st.button(label):
-        core.enqueue("replay", {"count": int(n)}, actor())
-        st.success(f"Queued {n} real requests through the Nova Assist app.")
+        core.enqueue("replay", {"count": int(n), "simulated": int(m)}, actor())
+        st.success(f"Queued {n} real + {m} simulated requests.")
 
 
 # --------------------------------------------------------------------------- sidebar
@@ -140,6 +144,9 @@ with st.sidebar:
         st.error(f"Stack not ready: {exc}")
         st.stop()
     st.caption("Identity is self-declared in this local demo; production would use SSO.")
+    if core.policy().get("simulation", {}).get("enabled"):
+        st.warning("**Classroom simulation ON.** Bulk traffic and most evaluation scores are synthetic and "
+                   "labelled as such; only a few calls per stage are real. See DEMO.md.")
 
 
 # --------------------------------------------------------------------------- pages
@@ -257,13 +264,13 @@ elif page == "2 · Offline evaluation":
     ev_cfg = core.policy()["evaluation"]
     prof = ev_cfg["profiles"][ev_cfg["profile"]]
     st.markdown(f"Both versions answer the **same** golden set (profile `{ev_cfg['profile']}`: {prof['per_slice']} "
-                f"per {prof['slice_by']}) plus 1 red-team prompt per attack type; judge `{ev_cfg['judge_route']}` "
+                f"per {prof['slice_by']}) plus red-team prompts; judge `{ev_cfg['judge_route']}` "
                 f"(`{core.route_params(ev_cfg['judge_route'])['model']}`) scores them with DeepEval.")
     stage = core.lifecycle()["stage"]
     if stage in ("proposal_approved", "offline_failed"):
         if st.button("Run offline evaluation (v1 and v2)", type="primary"):
             core.enqueue("offline_eval", {}, actor())
-            st.success("Queued. Demo profile: about 5-10 minutes on the Groq free tier (the v1 baseline is reused).")
+            st.success("Queued. Takes seconds: 1 real answer + 1 real judge call, the rest is simulated.")
     elif stage in ("baseline", "proposal_submitted", "proposal_rejected"):
         st.warning("The proposal must be approved first (Stage 1).")
     jobs_panel(("offline_eval",))
@@ -287,6 +294,15 @@ elif page == "2 · Offline evaluation":
         st.dataframe(sdf.pivot(index="slice", columns="metric", values=["v1", "v2"]), width="stretch")
         st.subheader("Gate checks")
         show_checks(ev["checks"])
+        if ch.get("live_results"):
+            st.subheader("Live sample (real Groq calls)")
+            st.caption(f"{ch.get('live_examples', 0)} example(s) answered by v2 and scored by the judge for real; "
+                       f"{ch.get('simulated_examples', 0)} simulated examples make up the rest of the evidence.")
+            for lr in ch["live_results"]:
+                st.markdown(f"**Customer:** {lr['input']}")
+                st.info(lr["output"])
+                st.caption(" · ".join(f"{m}: {lr[m]}" for m in core.policy()["evaluation"]["live_metrics"])
+                           + f" · {lr['source']}")
 
 elif page == "3 · Register challenger":
     st.title("Stage 3 · Register the challenger")
@@ -319,12 +335,12 @@ positions randomised to counter position bias.""")
         if res:
             governed(lifecycle.start_shadow, res[0], res[1], success="Mirroring on.")
     if lc["stage"] == "shadow":
-        replay_button(core.policy()["shadow"]["replay_requests"])
+        replay_button(core.policy()["shadow"]["real_requests"], core.policy()["shadow"]["simulated_requests"])
         jobs_panel(("replay",))
         s = lifecycle.shadow_stats(lc["window"])
         a, b, c, d, e = st.columns(5)
         a.metric("Pairs", s["pairs"])
-        b.metric("Judged", s["judged"])
+        b.metric("Judged", s["judged"], help=f"{s['real_judged']} judged for real by the LLM judge")
         c.metric("Win + tie rate", "–" if s["win_tie_rate"] is None else f"{s['win_tie_rate']:.0%}")
         d.metric("Critical violations", s["critical_violations"])
         e.metric("Challenger errors", "–" if s["error_rate"] is None else f"{s['error_rate']:.1%}")
@@ -395,9 +411,13 @@ elif page in ("5 · Canary", "6 · Gradual rollout"):
     live = lc["stage"].removesuffix("_passed") in lifecycle.LIVE_STAGES
     if live and (canary == (lc["stage"].startswith("canary"))):
         st.subheader(f"Live window `{lc['window']}` · v2 weight {lc['v2_weight']}%")
-        default = core.policy()["canary"]["replay_requests"] if canary else \
-            int(core.policy()["rollout"]["replay_requests"].get(str(lc["v2_weight"]), 20))
-        replay_button(default)
+        pol = core.policy()
+        if canary:
+            replay_button(pol["canary"]["real_requests"], pol["canary"]["simulated_requests"])
+        else:
+            key = str(lc["v2_weight"])
+            replay_button(int(pol["rollout"]["real_requests"].get(key, 0)),
+                          int(pol["rollout"]["simulated_requests"].get(key, 200)))
         jobs_panel(("replay",))
         traffic_metrics(lc["window"])
         c1, c2 = st.columns(2)

@@ -9,7 +9,7 @@ The whole lesson follows **one change**: NovaBank wants to replace Nova Assist *
 ## Before class (do this the evening before)
 
 1. Start the stack and open the console. On the **Overview** page all four services should show *healthy*. Click **Live check**: three ✅ lines mean the Groq key works.
-2. Leave the stack running for about 20 minutes. On first start the worker scores the golden set in the background: the **v1 champion baseline** (job `baseline_eval`, logged to MLflow, which is the evidence a real champion already has) and a **warm-up of the proposed v2** (job `prescore`, which only caches scores and makes no gate decision). The Stage 2 click in class then reuses those scores, writes the MLflow runs and decides the gate in seconds. Real companies do the same: candidate models are scored continuously by an evaluation pipeline, and the governed decision reads that evidence.
+2. Read **Real calls vs simulated data** below and decide how you will explain it. The whole lesson uses about 9 real Groq calls; everything else is labelled simulated.
 3. Optional dress rehearsal: run Stages 1 and 2 once, then **0 · Baseline → Reset demo**. Reset keeps the cached per-example scores (same model, data and judge means the same evidence), so the live Stage 2 click then finishes in seconds and still writes fresh MLflow runs.
 4. Keep `governance/policy.yaml` open in an editor so students can see the thresholds.
 
@@ -26,25 +26,60 @@ The whole lesson follows **one change**: NovaBank wants to replace Nova Assist *
 | 1:15 | Stage 3 · Register challenger | Aliases vs stages, lineage tags |
 | 1:25 | *Break* | |
 | 1:35 | Stage 4 · Shadow | Mirroring, pairwise judge, zero critical violations |
-| 1:55 | Stage 5 · Canary | 20% real traffic, live gate, **rollback demo** |
+| 1:55 | Stage 5 · Canary | 5% traffic, live gate, **rollback demo** |
 | 2:15 | Stage 6 · Gradual rollout | 25 → 50 → 100%, automatic checks |
 | 2:30 | Stage 7 · Promotion and monitoring | @champion moves, v1 retired, report, drift |
 | 2:40 | Recap and take-home | Slides outline below |
 
-## Why the numbers are so small (read this before class)
+## Real calls vs simulated data (read this before class)
 
-Every stage in this project is sized to finish in **2–3 minutes** on the Groq free tier, so no student waits long at any step. The free tier gives each model about 12 answers per minute and gives the judge about 8 calls per minute (1,000 output tokens/min). The **methods, gates, logs and controls are the production ones**; only the **volumes** are classroom-sized. All volumes live in `governance/policy.yaml`, so scaling up is a config change, not a code change.
+**This project runs in classroom simulation mode by default** (`simulation.enabled: true` in `governance/policy.yaml`). A real governance programme looks at thousands of evaluations and requests per change. On a free Groq tier that would take days and burn the daily token quota, so:
 
-| Stage | This demo | A real bank | Why we don't here |
+- At each stage, **one or two calls are real**. They go to Groq through the real gateway, are really mirrored, really routed and really judged. They prove that every piece of plumbing works, and you can show students the actual answer.
+- **The bulk of the evidence is simulated** by `governance/simulate.py` from synthetic model profiles that we invented for teaching (`simulation.versions` in `policy.yaml`). These are not measurements of the real models. Simulated scores, latencies, costs, errors, judge verdicts and violations are drawn from those profiles with a fixed seed, so every class sees the same numbers.
+- **Everything else is the real production machinery**, unchanged: gateway weights, virtual keys, MLflow registry and aliases, gates with production-sized minimums (200 shadow pairs, 50 canary requests, …), automatic rollback, human review, the hash-chained audit log and the report.
+
+**Labelled everywhere, never mixed up:**
+- Simulated rows have `simulated = true` in `governance.requests` and `governance.shadow_pairs`.
+- Simulated evaluation examples have `source: simulated` in the MLflow results table, and the run has params `simulated_examples` / `live_examples`.
+- The console shows a yellow **Classroom simulation ON** banner and a "N real + M simulated" caption on every traffic tile.
+- The simulator never writes into LiteLLM's or MLflow's own tables. The LiteLLM spend log contains only real calls, which is how the per-stage real-call counts below were measured.
+
+### Reference run (measured end to end on 2026-11-04 with a fresh Groq key)
+
+| Stage | Real Groq answers | Real judge calls | Simulated records | Time | Outcome |
+|---|---|---|---|---|---|
+| 0 · Baseline | 1 | 0 | 0 | < 5 s | 100% v1; one live customer answer from v1 |
+| 1 · Proposal | 0 | 0 | 0 | < 5 s | Student role refused; Model Risk Officer approved |
+| 2 · Offline evaluation | 1 | 1 | 141 examples × 2 versions | 16 s | Gate PASS on 64 checks (incl. 26 intent slices); live v2 answer scored 1.0 on policy compliance by the real judge |
+| 3 · Register challenger | 0 | 0 | 0 | < 5 s | v2 registered as `@challenger` |
+| 4 · Shadow | 2 (v1 + mirrored v2) | 1 | 400 requests + 400 pairs | 19 s | Gate PASS: 399 judged pairs (1 real), 80% win+tie, 0 critical, 0.5% errors |
+| 5 · Canary (5%) | 1 | 0 | 1,500 | 31 s | Passed automatically: 73 v2 requests, 0% errors, quality 0.89 |
+| 5b · Rollback demo + canary again | 0 | 0 | 1,500 | 53 s | Threshold tightened → **automatic rollback** to 100% v1 → policy restored → canary passed again |
+| 6 · Rollout 25% / 50% / 100% | 0 / 0 / 1 | 0 / 0 / 1 | 400 / 300 / 200 | 7 / 7 / 23 s | Each step passed automatically |
+| 7 · Promotion, report, drift | 0 | 0 | 142 examples (drift) | 5 s | v2 = `@champion`, v1 retired; report generated; drift PASS |
+| **Total** | **6** | **3** | | **~4 min of work** | Audit chain INTACT |
+
+**9 real Groq calls for the whole lesson.** The total wall time was 413 s, of which about 200 s was the test harness waiting for LiteLLM's log batches between stages.
+
+### What production does instead, and why we don't here
+
+| Stage | Classroom (simulated bulk) | A real bank (all real) | Why we don't do it for real here |
 |---|---|---|---|
-| 2 · Offline evaluation | 9 golden + 5 red-team per version, pre-scored in the background at startup; the click takes seconds | Thousands of golden examples per intent, hundreds of red-team attacks, confidence intervals, several judges plus human review; runs for hours | Would take days of free-tier judge quota |
-| 4 · Shadow | 8 mirrored requests, gate at ≥ 6 judged pairs | Days to weeks of mirrored production traffic, thousands of pairs | 8 pairs ≈ 2 min; 1,000 pairs ≈ 2 hours of judge time |
-| 5 · Canary | 20% of 20 requests, decides at ≥ 3 v2 requests | 1–5% of live traffic for hours or days, hundreds or thousands of v2 requests | The decision would take an afternoon |
-| 6 · Rollout | 16 / 8 / 4 requests at 25 / 50 / 100% | Each step runs for a day or a full business cycle (month-end, payday) | Same reason |
-| 7 · Drift check | 4 fresh golden examples, compared like-for-like with the reference | The full golden set on a nightly or weekly schedule, with alerting | Would use a large part of a day's judge quota |
-| Replay pacing | 12 requests/min | Real customer arrival rate | Free-tier limit: 8K tokens/min per model |
+| 2 · Offline evaluation | 142 examples per version, 1 really answered and judged | Thousands of golden examples, hundreds of red-team attacks, confidence intervals, several calibrated judges, human review of samples; runs for hours | About 900 judge calls per version: days of free-tier quota |
+| 4 · Shadow | 400 pairs, 1 really mirrored and judged | Days to weeks of mirrored production traffic | 400 real pairs ≈ 50 min of judge time and 400 real v2 calls |
+| 5 · Canary | 1,500 requests at 5%, 1 real | 1–5% of real customers for hours or days | Needs real customers, and the free tier allows about 12 answers/min |
+| 6 · Rollout | 400 / 300 / 200 requests, 1 real at 100% | Each step runs for a business cycle (payday, month-end) | Same |
+| 7 · Drift | Simulated re-evaluation; set `simulation.drift_shift: -0.10` to show a detection | Nightly or weekly real re-evaluation with alerting | Same as Stage 2 |
 
-**What small samples mean for the evidence (say this out loud):** with 3 judged answers, one bad answer moves the average by 0.3. A PASS on 3 samples is a **demonstration of the mechanism, not statistical proof**. In production the `min_*` values would be set from a power calculation, for example "enough requests to detect a 2-point drop in error rate with 95% confidence". While building this course we tried a 4-example offline evaluation, and it failed on a single noisy answer. That FAIL is still in the audit log and makes a good class discussion.
+**Say this out loud in class:** the simulated numbers demonstrate how governance works (what is measured, how gates decide, what happens on a breach). They are not evidence about these two models. Running for real is a single switch, `simulation.enabled: false`, and then volumes should be sized to your quota, for example the `demo` evaluation profile (14 examples, about 8 min per version on the free tier).
+
+**Teaching moments we hit while building this (all real, all in the audit log):**
+- A real 4-example evaluation **failed on noise**: one answer moved the policy average by 0.2.
+- A real shadow run **failed** for two reasons:
+  - The judge flagged a false "critical violation", which is why human review exists.
+  - Unpaced replay caused Groq 429s. LiteLLM silently drops failed mirrored calls, so 11% of mirrors were missing.
+- The judge hit Groq's **200K tokens/day** cap. Evaluation has a budget.
 
 ---
 
@@ -154,7 +189,7 @@ and grade them with consistent, documented metrics. Then compare against **thres
 
 ### 2. What to show
 1. **2 · Offline evaluation.** Read the header line: profile `demo` = 1 golden example per category (9) + 1 red-team prompt per attack type (5), judged by `qwen/qwen3.8-27b`.
-2. Click **Run offline evaluation (v1 and v2)**. The job panel updates every 5 seconds. Both versions were pre-scored in the background, so the run finishes in **seconds**. Point out the MLflow param `reused_cached_examples` (14 of 14), and explain that a governed run reads existing evidence and that the decision is what's being governed.
+2. Click **Run offline evaluation (v1 and v2)**. It finishes in about 15 seconds. Each version is scored on the full set of 130 golden + 12 red-team examples. **One** v2 example is answered by the real model and scored by the real judge; it appears under **Live sample (real Groq calls)** at the bottom of the page, so read it aloud. The other 141 are simulated, which the MLflow params `simulated_examples` and `live_examples` show.
 3. When it finishes, read the **gate banner** (PASS or FAIL) and then the metrics table, row by row:
 
 | Metric | How it is computed | How to read it |
@@ -247,8 +282,8 @@ v2 receives a **copy of real production traffic** but its answers are never show
 
 ### 2. What to show
 1. **4 · Shadow.** As **ML Platform Lead**, fill in the approval form → *Approve: start shadow mirroring*. Then on **Overview → Models behind the gateway**, the `nova-assist` v1 deployment now shows `silent_model = nova-v2`. That is LiteLLM's native mirroring.
-2. Click **Send replay traffic** (8 real customer questions from `data/replay.jsonl`, never seen in the golden set).
-3. Watch the tiles fill. This takes about 2 minutes.
+2. Click **Send traffic** (1 REAL + 400 SIMULATED). The real one is a customer question from `data/replay.jsonl`, never seen in the golden set; it really goes to v1 and is really mirrored to v2 by LiteLLM.
+3. Watch the tiles fill. It takes about 20 seconds, mostly waiting for the real pair to be judged. Hover **Judged** to see how many judgements were real.
    - **Pairs:** each customer request matched to its mirrored v2 call from LiteLLM's spend logs.
    - **Judged:** the judge compared both answers. A/B positions are randomised to counter **position bias**.
    - **Win + tie rate:** the share of judgements where v2 was at least as good.
@@ -261,7 +296,7 @@ v2 receives a **copy of real production traffic** but its answers are never show
 ### 3. Talking points and student questions
 - *"Does mirroring slow customers down?"* No. LiteLLM fires the silent call in the background, and all pairing and judging happens later in the worker, off the request path. Compare the latency tiles with Stage 0.
 - *"Why not just A/B test immediately?"* Shadow costs nothing in customer risk. Canary exposes real customers, so you want shadow evidence first.
-- *"Why is replay throttled to 12 requests/min?"* While building this course, we replayed 45 requests in 90 s. Groq rate-limited v2's mirrored calls, and LiteLLM drops failed silent calls without logging them, so the gate counted 11% challenger errors. That was a test-harness artefact, not model quality, and real replays are paced to provider limits for exactly this reason.
+- *"Why are real requests throttled to 12/min?"* While building this course, we replayed 45 requests in 90 s. Groq rate-limited v2's mirrored calls, and LiteLLM drops failed silent calls without logging them, so the gate counted 11% challenger errors. That was a test-harness artefact, not model quality, and real replays are paced to provider limits for exactly this reason.
 - *"Why can a human overturn the judge?"* LLM judges make mistakes. Human oversight of automated decisions (EU AI Act Art. 14) applies to your evaluation tooling too. The override is never silent: who, why and when are in the audit log.
 - *"What does shadow NOT tell you?"* How customers react: follow-up questions, satisfaction, escalations. Only canary shows that.
 
@@ -276,17 +311,17 @@ v2 receives a **copy of real production traffic** but its answers are never show
 ## Stage 5 · Canary deployment (20 min, including the rollback demo)
 
 ### 1. Concept
-Send a **small slice of real customers** (20% here; 1–10% is common at large scale) to v2 and watch live metrics closely, ready to pull back at once.
+Send a **small slice of real customers** (5% here; 1–10% is common) to v2 and watch live metrics closely, ready to pull back at once.
 
 *Analogy:* the canary in the coal mine. A small, early exposure that warns you before everyone is affected.
 
 *Why:* EU AI Act Art. 72 (post-market monitoring) and SR 11-7 ongoing monitoring both expect live evidence, not just lab results.
 
 ### 2. What to show
-1. **5 · Canary.** As **ML Platform Lead**, approve *send 20% of traffic to v2*. Overview now shows two `nova-assist` deployments, with weights 80 and 20. That is the LiteLLM router doing real weighted routing.
-2. Click **Send replay traffic** (20). Replay is paced at 12 requests/min to stay inside Groq's free-tier limits, so this takes about 2 minutes. The two metric blocks show **requests, error rate, p95 latency, judged quality and cost per request per version**. These come from LiteLLM's `LiteLLM_SpendLogs` (including failures that the fallback hid from customers) plus online judging.
-3. Point out that v2 gets about 20% of requests. It is random, so it won't be exactly 4 out of 20. If the gate says "not enough data", send 4 more.
-4. The worker checks the gate **every 15 s**. Once there are ≥ 3 challenger requests and ≥ 3 judged samples, it records a decision on its own. If it shows "not enough data", send more traffic.
+1. **5 · Canary.** As **ML Platform Lead**, approve *send 5% of traffic to v2*. Overview now shows two `nova-assist` deployments, with weights 95 and 5. That is the LiteLLM router doing real weighted routing.
+2. Click **Send traffic** (1 real + 1,500 simulated). The real request is routed by the real LiteLLM weights, so it will almost always land on v1. The two metric blocks show **requests, error rate, p95 latency, judged quality and cost per request per version**. These come from LiteLLM's `LiteLLM_SpendLogs` (including failures that the fallback hid from customers) plus online judging.
+3. Point out that v2 gets about 5% of requests, roughly 75 of 1,500. If the gate says "not enough data", send more.
+4. The worker checks the gate **every 15 s**. Once there are ≥ 50 challenger requests and ≥ 30 judged samples, it records a decision on its own. If it shows "not enough data", send more traffic.
 
 **Rollback demo (do it here, honestly):**
 1. While the canary is live, before or after it passes, go to **Policy** as **Model Risk Officer**.
@@ -318,15 +353,15 @@ Increase exposure step by step: 25%, then 50%, then 100%. Every step has the sam
 *Why:* some problems only show up at scale: rate limits, cost and rare intents. Steps bound the blast radius.
 
 ### 2. What to show
-1. **6 · Gradual rollout.** Approve *advance to 25%*. Send the suggested replay traffic (16) and watch the gate pass on its own.
-2. Repeat for **50%** (8 requests) and **100%** (4 requests).
+1. **6 · Gradual rollout.** Approve *advance to 25%*. Send the suggested traffic (400 simulated) and watch the gate pass on its own within 15 s.
+2. Repeat for **50%** (300 simulated) and **100%** (1 real + 200 simulated). The real request at 100% is answered by v2 and judged for real.
    - At 100% there is no v1 traffic in the window, so the latency and cost ratios compare against **the champion's metrics captured in the canary window**. The check name says so.
 3. The **Gate history** table lists every decision with its policy version. Read it like an audit timeline.
 4. Optional: click **Manual rollback** at 50% to show the operator path. It creates a `rollback` audit entry with your name. You would then restart from the Canary page.
 
 ### 3. Talking points and student questions
 - *"Who approves each step?"* A person approves each traffic increase; the system can only *decrease* exposure on its own (rollback). Automation reduces risk and people accept it. That is the human-oversight principle (EU AI Act Art. 14).
-- *"Only 4 requests at 100%? Really?"* Classroom-sized, so nobody waits. A bank would run each step for hours or days with thousands of requests, and the `min_*` values in `policy.yaml` would be in the hundreds. Same gate, bigger numbers.
+- *"Are these numbers real?"* Only the rows marked real. The rest come from the classroom simulator: the gates and the rollback are real, the bulk traffic is not. A bank would run each step for hours or days on real customers.
 - *"Why 25/50/100?"* They are policy values (`rollout.steps`), and some companies use 1/5/25/100. What matters is that the steps are decided in advance.
 
 ### 4. What could go wrong in real life

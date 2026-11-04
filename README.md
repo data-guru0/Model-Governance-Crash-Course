@@ -4,11 +4,7 @@ A complete, runnable mini project for teaching **model governance**: how a compa
 
 **Story.** NovaBank, a fictional digital bank, runs an LLM support assistant, *Nova Assist*. Version **v1** is live. The product team proposes **v2**. The governance board says: *"Prove it, roll it out safely, and keep an audit trail."* Students follow that one change from proposal to production, or to rollback.
 
-Everything is real:
-- Every model call hits the Groq API through a LiteLLM gateway.
-- Every score comes from a real DeepEval run.
-- Every traffic percentage is real routing by the gateway.
-- Every decision is in a tamper-evident audit log.
+**Classroom simulation mode (default).** The whole lesson makes only about **9 real Groq calls**. One or two per stage really go through the gateway, are really mirrored, routed and judged, and prove the plumbing works. The production-sized bulk (thousands of requests and evaluations) comes from `governance/simulate.py`, generated from synthetic model profiles in `governance/policy.yaml`. **Every simulated record is labelled** (`simulated = true`, `source: simulated`, a console banner), and the simulator never writes into LiteLLM's or MLflow's own tables. The gates, routing, registry, rollback, approvals and audit trail are the real production machinery. Set `simulation.enabled: false` to run everything for real. DEMO.md → *Real calls vs simulated data* has the per-stage breakdown.
 
 > ## Honesty note: what is native and what we built
 > | Need | How it is done | Native? |
@@ -18,7 +14,8 @@ Everything is real:
 > | Fallbacks, retries, virtual keys with model allow-lists, RPM limits and budgets, spend and request logging to Postgres | LiteLLM open-source proxy | **Native** |
 > | Model registry, aliases, Prompt Registry, runs, datasets, tables | MLflow 3.18 | **Native** |
 > | Evaluation metrics (relevancy, G-Eval, toxicity, bias) | DeepEval 4.3.3 with a small custom-model adapter (`GatewayJudge`) so the judge is called through our gateway | **Native metrics.** We wrote the adapter, because DeepEval's `LiteLLMModel` would need a second copy of the LiteLLM SDK in the image. |
-> | Gates, automatic rollback, append-only hash-chained audit log, governance report, approvals by role | Our own code: `governance/`, `shadow/worker.py`, `postgres/init.sql` | **Built.** No tool offers these. |
+> | Production-sized traffic and evaluation volume in class | `governance/simulate.py`, a seeded simulator using invented model profiles; every row labelled simulated | **Built. Simulated by design**, to save LLM quota. Not evidence about the real models. |
+| Gates, automatic rollback, append-only hash-chained audit log, governance report, approvals by role | Our own code: `governance/`, `shadow/worker.py`, `postgres/init.sql` | **Built.** No tool offers these. |
 >
 > **LiteLLM enterprise features deliberately avoided:** SSO for the admin UI, enterprise audit logs, team-based logging callbacks, guardrails, secret-manager integrations, tag-based budgets. This project uses only the open-source proxy. Our audit trail is our own Postgres table.
 >
@@ -98,16 +95,17 @@ Measured from response headers for this key: **1,000 requests/day, 8,000 tokens/
 - A small default evaluation profile (`demo`).
 - Per-example results saved to Postgres, so an interrupted evaluation resumes instead of re-spending tokens.
 
-| Step | Groq calls (approx.) | Time on the free tier |
-|---|---|---|
-| Background at first start: v1 baseline + v2 warm-up (14 examples each) | 28 answers + ~140 judge calls | ~15–20 min, unattended |
-| Stage 2 offline eval (governed run, reuses the pre-scored examples) | ~0 | seconds |
-| Stage 4 shadow (8 requests, paced at 12/min) | 8 v1 + 8 v2 + 8 judge | ~2 min |
-| Stage 5 canary (20 requests at 20%) | 20 answers + ~5 judge | ~2–3 min |
-| Stage 6 rollout (16 / 8 / 4 requests at 25 / 50 / 100%) | 28 answers + ~15 judge | ~1–2 min per step |
-| Stage 7 drift check (4 fresh golden examples) | 4 answers + ~20 judge | ~2–3 min |
+| Stage | Real Groq calls (measured) | Simulated records | Time |
+|---|---|---|---|
+| 0 Baseline | 1 answer | 0 | < 5 s |
+| 2 Offline evaluation | 1 answer + 1 judge | 141 examples × 2 versions | ~15 s |
+| 4 Shadow | 2 answers (v1 + mirrored v2) + 1 judge | 800 | ~20 s |
+| 5 Canary (+ rollback demo) | 1 answer | 3,000 | ~1.5 min |
+| 6 Rollout 25/50/100% | 1 answer + 1 judge | 900 | ~40 s |
+| 7 Promotion, report, drift | 0 | 142 | ~5 s |
+| **Whole lesson** | **9 calls** | | **under 7 min end to end** |
 
-The bottleneck is the judge: Groq's free tier also caps **output tokens at 1,000 per minute** per model, which is roughly 8 judge calls per minute. These are **classroom volumes**. DEMO.md ("Why the numbers are so small") explains what production uses and why. Bigger evaluation profiles exist and reuse already-scored examples: `lite` (27 + 12, ~30 min per version) and `full` (130 + 12, a paid tier or multi-day resumable runs). Switch under `evaluation.profile` on the console's Policy page. DEMO.md lists what a production evaluation adds on top.
+The bottleneck is the judge: Groq's free tier also caps **output tokens at 1,000 per minute** per model, which is roughly 8 judge calls per minute. With `simulation.enabled: false` everything is real and these limits matter; size volumes to your quota. Evaluation profiles for real runs, which reuse already-scored examples: `lite` (27 + 12, ~30 min per version) and `full` (130 + 12, a paid tier or multi-day resumable runs). Switch under `evaluation.profile` on the console's Policy page. DEMO.md lists what a production evaluation adds on top.
 
 ## Running the tests
 

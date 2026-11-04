@@ -103,3 +103,13 @@ def test_console_pages_render():
         at = AppTest.from_file(str(core.ROOT / "console" / "app.py"), default_timeout=60).run()
         at.sidebar.radio[0].set_value(page).run()
         assert not at.exception, f"{page}: {at.exception[0].value}"
+
+
+def test_simulated_records_are_labelled_and_never_reach_the_gateway():
+    """Classroom simulation must never be mistakable for evidence."""
+    assert not core.query("SELECT 1 FROM governance.requests WHERE simulated AND model_id <> 'simulated' LIMIT 1")
+    assert not core.query("SELECT 1 FROM governance.requests WHERE NOT simulated AND model_id = 'simulated' LIMIT 1")
+    leaked = core.query("""SELECT COUNT(*) AS n FROM "LiteLLM_SpendLogs"
+                           WHERE metadata->'spend_logs_metadata'->>'request_id' LIKE 'sim-%%'""",
+                        conn_factory=core.litellm_db)
+    assert leaked[0]["n"] == 0

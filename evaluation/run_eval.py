@@ -28,7 +28,7 @@ from deepeval.models import DeepEvalBaseLLM
 from deepeval.test_case import LLMTestCase, SingleTurnParams
 from psycopg.types.json import Jsonb
 
-from governance import core
+from governance import core, simulate
 
 DATA = core.ROOT / "data"
 QUALITY = ["answer_relevancy", "helpfulness", "correctness"]
@@ -206,11 +206,14 @@ def aggregate(results: list[dict], pass_score: float) -> tuple[dict, dict]:
 
 # --------------------------------------------------------------------------- entry point
 def run_evaluation(version: str, purpose: str, actor: str, job_id: int | None = None,
-                   fresh: bool = False, golden_limit: int | None = None, prescore: bool = False) -> dict:
+                   fresh: bool = False, golden_limit: int | None = None, live_ids: list[str] | tuple = (),
+                   sim_shift: float = 0.0) -> dict:
     """Evaluate one model version.
     fresh=True        ignore cached example results (drift checks need new calls)
     golden_limit=N    only the first N golden examples, no red-team (small drift probe)
-    prescore=True     score and cache examples only: no MLflow run, no gate (background warm-up)"""
+    live_ids          in simulation mode: these examples get a REAL answer + REAL judge calls
+                      (policy.yaml evaluation.live_metrics); every other example is simulated
+    sim_shift         in simulation mode: shift every simulated score (drift demonstration)"""
     pol = core.policy()
     ev = pol["evaluation"]
     profile = ev["profiles"][ev["profile"]]
@@ -233,6 +236,17 @@ def run_evaluation(version: str, purpose: str, actor: str, job_id: int | None = 
     if fresh:
         run_key += f"|fresh-{core.now().isoformat()}"
 
+    safety_all = profile["toxicity_bias_on"] == "all"
+
+    def names_for(ex: dict) -> list[str]:
+        if "attack" in ex:
+            return ["redteam_refusal", "policy_compliance", "toxicity_free", "bias_free"]
+        return QUALITY + ["policy_compliance"] + (["toxicity_free", "bias_free"] if safety_all else [])
+
+    if simulate.enabled():
+        return _simulated_run(version, purpose, actor, job_id, golden, red, list(live_ids), names_for,
+                              run_key, sim_shift, prompt, profile, ev, pol)
+
     done = {r["example_id"]: r["result"] for r in
             core.query("SELECT example_id, result FROM governance.eval_results WHERE run_key = %s", (run_key,))}
     todo = [e for e in examples if e["id"] not in done]
@@ -240,12 +254,6 @@ def run_evaluation(version: str, purpose: str, actor: str, job_id: int | None = 
 
     key = core.worker_key()
     metrics = build_metrics(judge_model(), core.system_prompt_text())
-    safety_all = profile["toxicity_bias_on"] == "all"
-
-    def names_for(ex: dict) -> list[str]:
-        if "attack" in ex:
-            return ["redteam_refusal", "policy_compliance", "toxicity_free", "bias_free"]
-        return QUALITY + ["policy_compliance"] + (["toxicity_free", "bias_free"] if safety_all else [])
 
     failures = []
     with ThreadPoolExecutor(max_workers=pol["rate_limits"]["concurrency"]) as pool:
@@ -268,11 +276,42 @@ def run_evaluation(version: str, purpose: str, actor: str, job_id: int | None = 
         raise RuntimeError(f"{len(failures)} of {len(examples)} examples failed (likely rate limits); "
                            f"{len(done)} saved, re-run to resume. First error: {failures[0]['error']}")
 
-    if prescore:
-        return {"version": version, "run_key": run_key, "scored": len(examples), "reused_cached_examples": reused}
     results = [done[e["id"]] for e in examples]
     overall, slices = aggregate(results, ev["redteam_pass_score"])
 
+    return _log_run(version, purpose, actor, results, golden, red, run_key, reused, prompt, profile, ev, pol,
+                    overall, slices, {"simulated_examples": 0, "live_examples": len(results)})
+
+
+def _simulated_run(version, purpose, actor, job_id, golden, red, live_ids, names_for, run_key, shift, prompt,
+                   profile, ev, pol) -> dict:
+    """Classroom mode: real answers + real judge calls only for `live_ids`, simulated elsewhere."""
+    results, live = [], []
+    live_metrics = ev["live_metrics"]
+    if live_ids:
+        key, judge = core.worker_key(), build_metrics(judge_model(), core.system_prompt_text())
+    for ex in golden + red:
+        names = names_for(ex)
+        if ex["id"] in live_ids:
+            res = _evaluate_example(ex, core.route_for(version), key, judge, [m for m in names if m in live_metrics])
+            sim = simulate.eval_example(ex, version, [m for m in names if m not in live_metrics], purpose, shift)
+            res = {**sim, **res, "source": f"LIVE answer + LIVE judge ({', '.join(live_metrics)}); rest simulated"}
+            live.append(res)
+        else:
+            res = simulate.eval_example(ex, version, names, purpose, shift)
+        results.append(res)
+        if job_id and len(results) % 20 == 0:
+            core.job_progress(job_id, f"{version}: {len(results)}/{len(golden) + len(red)} examples")
+    overall, slices = aggregate(results, ev["redteam_pass_score"])
+    out = _log_run(version, purpose, actor, results, golden, red, run_key + "|simulated", 0, prompt, profile, ev,
+                   pol, overall, slices, {"simulated_examples": len(results) - len(live), "live_examples": len(live)})
+    out["live_results"] = live
+    return out
+
+
+def _log_run(version, purpose, actor, results, golden, red, run_key, reused, prompt, profile, ev, pol,
+             overall, slices, counts) -> dict:
+    route, judge_route = core.route_for(version), ev["judge_route"]
     mlflow.set_experiment(pol["registry"]["experiment"])
     with mlflow.start_run(run_name=f"{purpose}-{version}") as run:
         mlflow.set_tags({"stage": "offline_evaluation", "purpose": purpose, "nova_version": version,
@@ -285,6 +324,7 @@ def run_evaluation(version: str, purpose: str, actor: str, job_id: int | None = 
             "policy_version": core.policy_fingerprint(), "git_commit": core.git_commit(),
             "n_golden": len(golden), "n_redteam": len(red), "reused_cached_examples": reused,
             "temperature": ev["generation"]["temperature"], "max_tokens": ev["generation"]["max_tokens"],
+            "simulation_enabled": simulate.enabled(), **counts,
         })
         mlflow.log_metrics({k: v for k, v in overall.items() if v is not None})
         mlflow.log_metrics({f"slice.{s}.{m}": v for s, d in slices.items() for m, v in d.items()
@@ -300,7 +340,7 @@ def run_evaluation(version: str, purpose: str, actor: str, job_id: int | None = 
         run_id = run.info.run_id
 
     return {"version": version, "run_id": run_id, "run_key": run_key, "overall": overall, "slices": slices,
-            "example_ids": [e["id"] for e in examples],
+            "example_ids": [e["id"] for e in golden + red], **counts,
             "reused_cached_examples": reused, "dataset_version": dataset_version(), "profile": ev["profile"]}
 
 

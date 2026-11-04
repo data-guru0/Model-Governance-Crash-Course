@@ -67,10 +67,8 @@ def run_jobs_forever() -> None:
                 result = lifecycle.job_offline_eval(job["id"], job["actor"])
             elif job["kind"] == "baseline_eval":
                 result = lifecycle.job_baseline_eval(job["id"], job["actor"])
-            elif job["kind"] == "prescore":
-                result = lifecycle.job_prescore(job["id"], p["version"], job["actor"])
             elif job["kind"] == "replay":
-                result = lifecycle.job_replay(job["id"], int(p["count"]), job["actor"])
+                result = lifecycle.job_replay(job["id"], int(p["count"]), job["actor"], int(p.get("simulated", 0)))
             elif job["kind"] == "drift":
                 result = lifecycle.job_drift(job["id"], job["actor"])
             else:
@@ -88,7 +86,8 @@ def pair_shadow(lc: dict) -> None:
     challenger_route = core.route_for("v2" if lc.get("champion", "v1") == "v1" else "v1")
     pending = core.query("""SELECT r.* FROM governance.requests r
                             LEFT JOIN governance.shadow_pairs p USING (request_id)
-                            WHERE r.stage = %s AND p.id IS NULL AND r.response IS NOT NULL""", (lc["window"],))
+                            WHERE r.stage = %s AND p.id IS NULL AND r.response IS NOT NULL AND NOT r.simulated""",
+                         (lc["window"],))
     if not pending:
         return
     mirrored = core.query("""SELECT metadata->'spend_logs_metadata'->>'request_id' AS rid, status, spend,
@@ -149,7 +148,7 @@ def online_judge(lc: dict, batch: int) -> None:
 
     rates = core.policy()["online_judging"]
     rows = core.query("""SELECT * FROM governance.requests WHERE stage = %s AND response IS NOT NULL
-                         AND quality_reason IS NULL ORDER BY id LIMIT %s""", (lc["window"], batch * 4))
+                         AND quality_reason IS NULL AND NOT simulated ORDER BY id LIMIT %s""", (lc["window"], batch * 4))
     judged = 0
     metric = None
     for r in rows:
@@ -186,9 +185,6 @@ def main() -> None:
     if not core.query("""SELECT 1 FROM governance.jobs WHERE kind = 'baseline_eval'
                          AND status IN ('queued', 'running', 'done')"""):
         core.enqueue("baseline_eval", {}, ACTOR)  # champion baseline evidence, runs during Stages 0-1
-    if not core.query("""SELECT 1 FROM governance.jobs WHERE kind = 'prescore'
-                         AND status IN ('queued', 'running', 'done')"""):
-        core.enqueue("prescore", {"version": "v2"}, ACTOR)  # warm the cache for the proposed challenger
     threading.Thread(target=run_jobs_forever, daemon=True).start()
     last_gate = 0.0
     print("governance worker running")

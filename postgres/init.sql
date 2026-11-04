@@ -69,7 +69,8 @@ CREATE TABLE governance.requests (
     cost_usd          DOUBLE PRECISION,
     error             TEXT,
     quality_score     DOUBLE PRECISION,
-    quality_reason    TEXT
+    quality_reason    TEXT,
+    simulated         BOOLEAN NOT NULL DEFAULT false   -- classroom simulator row, never real traffic
 );
 CREATE INDEX requests_stage_idx ON governance.requests (stage, model_version);
 
@@ -95,7 +96,8 @@ CREATE TABLE governance.shadow_pairs (
     judged_at             TIMESTAMPTZ,
     review_decision       TEXT,      -- human review of a critical flag: confirmed | overturned
     reviewed_by           TEXT,
-    review_note           TEXT
+    review_note           TEXT,
+    simulated             BOOLEAN NOT NULL DEFAULT false
 );
 
 -- Per-example offline evaluation results. Persisted as they complete so a run that hits
