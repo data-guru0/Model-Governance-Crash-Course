@@ -20,7 +20,7 @@ import traceback
 
 from psycopg.types.json import Jsonb
 
-from governance import core, lifecycle
+from governance import core, lifecycle, rehearsal
 
 TICK_SECONDS = 5
 MIRROR_WAIT_SECONDS = 60   # a mirrored call missing after this long counts as a challenger error
@@ -67,6 +67,9 @@ def run_jobs_forever() -> None:
                 result = lifecycle.job_offline_eval(job["id"], job["actor"])
             elif job["kind"] == "replay":
                 result = lifecycle.job_replay(job["id"], int(p["count"]), job["actor"], int(p.get("simulated", 0)))
+            elif job["kind"] == "rehearsal":
+                result = rehearsal.job_rehearsal(job["id"], job["actor"], bool(p.get("reset_after", True)),
+                                                 bool(p.get("rollback_demo", True)))
             elif job["kind"] == "drift":
                 result = lifecycle.job_drift(job["id"], job["actor"])
             else:

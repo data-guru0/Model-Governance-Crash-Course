@@ -107,7 +107,8 @@ def test_console_api_and_ui_serve():
     page = c.get("/")
     assert page.status_code == 200 and "NovaBank Governance Console" in page.text
     for path in ("/api/health", "/api/state", "/api/usage", "/api/proposal", "/api/offline", "/api/shadow",
-                 "/api/live", "/api/drift", "/api/audit", "/api/policy", "/api/jobs?kinds=replay",
+                 "/api/live", "/api/drift", "/api/audit", "/api/policy", "/api/jobs?kinds=replay", "/api/story",
+                 "/api/daily", "/api/prompt",
                  "/static/app.js", "/static/styles.css"):
         assert c.get(path).status_code == 200, path
     refused = c.post("/api/promote", json={"name": "test", "role": "Student"})

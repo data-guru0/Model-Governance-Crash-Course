@@ -110,7 +110,7 @@ The bottleneck is the judge: Groq's free tier also caps **output tokens at 1,000
 
 ## Running the tests
 
-The integration tests hit the real stack (gateway routes, key restrictions, registry aliases, gate logic, the append-only audit log, rollback, and every console page). They make a handful of real Groq calls.
+The integration tests hit the real stack (gateway routes, key restrictions, registry aliases, gate logic, the append-only audit log, rollback, simulation labelling and every console API). **Run them from the console: System check → Run the integration tests** (about 10 s, 1 real Groq call). The same page has **Rehearse the whole story**, which plays all seven weeks automatically (about 2 min, about 11 real calls) and reports every chapter. Terminal equivalent, if you prefer:
 
 ```bash
 docker compose exec governance-console pytest -q tests

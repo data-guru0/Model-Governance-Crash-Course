@@ -104,6 +104,7 @@ const PAGES_META = [
   { id: "s7", n: 7, label: "Promotion" },
   { id: "audit", label: "Audit log", section: "Records" },
   { id: "policy", label: "Governance policy" },
+  { id: "check", label: "System check" },
 ];
 
 function renderNav() {
@@ -123,7 +124,7 @@ function renderNav() {
       cls += done ? " done" : p.n === ci ? " current" : "";
       mark = `<span class="step">${done ? I.check : p.n}</span>`;
     } else {
-      mark = `<span class="step">${{ overview: I.book, audit: I.lock, policy: I.doc }[p.id]}</span>`;
+      mark = `<span class="step">${{ overview: I.book, audit: I.lock, policy: I.doc, check: I.pulse }[p.id]}</span>`;
     }
     html += `<a class="${cls}" href="#/${p.id}">${mark}<span>${p.label}</span></a>`;
     if (p.id === "s7" && inRail) { html += "</div>"; inRail = false; }
@@ -492,6 +493,11 @@ PAGES.s0 = {
         <button class="btn primary" data-act="askProd">${I.send}Send to the production app</button><div id="s0-answer" style="margin-top:14px"></div></section>
     </div>
     <section class="card"><div class="card-title">${I.tag}Model Registry · <code>nova-assist</code><span class="sub"><a href="http://localhost:5000/#/models/nova-assist" target="_blank" rel="noopener">open in MLflow ↗</a></span></div><div id="s0-reg"></div></section>
+    <details class="disclose" style="margin-top:16px"><summary>The bank policy prompt (governance/policy.md) · edit it as a governed change</summary><div>
+      <p class="muted small">Every answer Nova Assist gives starts from this prompt. Changing it is a model change: saving registers a new version in the MLflow Prompt Registry and writes the audit log. Allowed: <span id="s0-editors"></span>.</p>
+      <textarea class="input code" id="s0-prompt" spellcheck="false" style="min-height:260px"></textarea>
+      <label class="field" style="margin-top:10px">Reason for the change<input class="input" id="s0-preason" placeholder="e.g. Fraud team: always tell customers we will never ask for their PIN"></label>
+      <button class="btn primary" data-act="savePrompt">${I.tag}Save as a new prompt version</button></div></details>
     <section class="card flat"><div class="card-title">${I.rollback}Restart the story</div>
       <p class="muted" style="margin-top:-6px">Back to Week 0: 100% v1, <code>@champion</code> → v1; traffic, shadow pairs and gate decisions cleared. The audit log is append-only, so the reset itself is recorded there.</p>
       <label class="check-line"><input type="checkbox" id="s0-confirm"> I understand this restarts the lesson</label>
@@ -502,8 +508,10 @@ PAGES.s0 = {
       <div><div class="k">Provider model</div><div class="v mono" style="font-size:12.5px">${esc(c?.tags.provider_model)}</div></div>
       <div><div class="k">Prompt</div><div class="v mono" style="font-size:12.5px">${esc(S.prompt.uri)}</div></div>
       <div><div class="k">Gateway route</div><div class="v mono" style="font-size:12.5px">nova-assist → ${esc(c?.tags.gateway_route)}</div></div></div>
-      ${S.prompt.in_sync ? "" : `<div class="notice warn" style="margin-top:12px">${I.alert}<div><b>policy.md differs from the registered prompt.</b> Restart the worker to register a new prompt version.</div></div>`}`);
+      ${S.prompt.in_sync ? "" : `<div class="notice warn" style="margin-top:12px">${I.alert}<div><b>governance/policy.md differs from the registered prompt.</b> A prompt change is a model change: register it as a new version.
+        <div style="margin-top:8px"><button class="btn" data-act="promptSync">${I.tag}Register the new prompt version</button></div></div></div>`}`);
     region("s0-reg", registryTable());
+    if (!memo.promptLoaded) { const p = await api("/api/prompt"); $("#s0-prompt").value = p.text; region("s0-editors", p.editors.map(esc).join(", ")); memo.promptLoaded = true; }
   },
 };
 
@@ -818,6 +826,40 @@ PAGES.policy = {
   },
 };
 
+PAGES.check = {
+  render: () => `${head({ eyebrow: "Before class", title: "System check" })}
+    <div class="notice info" style="margin-bottom:16px">${I.info}<div>Everything after the first <code>docker compose up</code> happens in this console. Use this page before class to prove the whole stack works: services, the test suite, and a full automatic rehearsal of the story.</div></div>
+    <div class="grid g2">
+      <section class="card"><div class="card-title">${I.pulse}Services</div><div id="ck-health" class="grid g2" style="gap:10px"></div>
+        <hr class="sep"><div class="row between"><div class="muted small">One tiny real call per model (4 Groq calls).</div><button class="btn" data-act="liveCheck">${I.play}Live check</button></div>
+        <div id="ov-live" style="margin-top:12px"></div></section>
+      <section class="card"><div class="card-title">${I.shield}Integration tests<span class="sub">about 10 s · 1 real Groq call</span></div>
+        <p class="muted" style="margin-top:-6px">Gateway routes, key restrictions, registry aliases, gate logic, the append-only audit log, rollback, simulation labelling and every console API. Safe to run at any time.</p>
+        <button class="btn primary" data-act="selftest">${I.play}Run the integration tests</button><div id="ck-tests" style="margin-top:12px"></div></section>
+    </div>
+    <section class="card"><div class="card-title">${I.book}Rehearse the whole story<span class="sub">about 3 min · ~11 real Groq calls</span></div>
+      <p class="muted" style="margin-top:-6px">Plays every chapter automatically with the same governed actions as the buttons: proposal, three-way exam, registration, shadow week, canary week, the rollback demo, the three rollout weeks, promotion, report and drift check. Each chapter is checked and timed. <b>It replaces the current lesson state</b>, so run it before class, not during.</p>
+      <label class="check-line"><input type="checkbox" id="ck-rb" checked> include the rollback demo</label>
+      <label class="check-line"><input type="checkbox" id="ck-reset" checked> reset to Week 0 afterwards (ready for class)</label>
+      <label class="check-line"><input type="checkbox" id="ck-confirm"> I understand this replaces the current lesson state</label>
+      <button class="btn primary" data-act="rehearse">${I.play}Rehearse the whole story</button>
+      <div id="ck-job" style="margin-top:12px"></div><div id="ck-result" style="margin-top:12px"></div></section>`,
+  async refresh() {
+    const h = await api("/api/health");
+    region("ck-health", ["gateway", "mlflow", "app", "postgres"].map((k) => `<div class="card stat flat" style="padding:12px 14px"><div class="label">${{ gateway: "LiteLLM gateway", mlflow: "MLflow", app: "Nova Assist app", postgres: "Postgres" }[k]}</div><div style="margin-top:6px">${pill(h[k], "Healthy", "Down")}</div></div>`).join(""));
+    const jobs = await jobsRegion("ck-job", "rehearsal");
+    const j = jobs[0];
+    if (!j || j.status !== "done") { region("ck-result", ""); return; }
+    const full = memo.rehearsal?.id === j.id ? memo.rehearsal : (memo.rehearsal = { id: j.id, ...(await api(`/api/jobs/${j.id}`)) });
+    const r = full.result;
+    if (!r) return;
+    region("ck-result", `${gateBanner(r.passed, "Story rehearsal", `${r.chapters.length} chapters in ${r.seconds} s · ${r.real_llm_calls} real LLM calls · audit chain ${r.audit_chain_intact ? "intact" : "BROKEN"}${r.reset_to_week_0 ? " · reset to Week 0" : ""}`)}
+      ${r.error ? `<div class="notice bad" style="margin-bottom:12px">${I.x}<div><b>Stopped:</b> ${esc(r.error)}</div></div>` : ""}
+      <div class="table-wrap"><table><thead><tr><th>Result</th><th>Chapter</th><th class="num">Seconds</th><th>Outcome</th></tr></thead><tbody>
+      ${r.chapters.map((c) => `<tr><td>${pill(c.ok, "OK", "FAIL")}</td><td><b>${esc(c.chapter)}</b></td><td class="num">${c.seconds}</td><td class="small">${esc(c.outcome)}</td></tr>`).join("")}</tbody></table></div>`);
+  },
+};
+
 // --------------------------------------------------------------------------- actions
 const A = {
   async liveCheck() {
@@ -867,6 +909,23 @@ const A = {
     region("s7-report", `<div class="row between" style="margin-bottom:10px"><span class="muted small">Saved as <code>${esc(r.file)}</code></span>
       <a class="btn" download="governance-report.md" href="data:text/markdown;charset=utf-8,${encodeURIComponent(r.markdown)}">${I.doc}Download Markdown</a></div>
       <div class="card flat md">${mdSafe(r.markdown)}</div>`);
+  },
+  async savePrompt() {
+    const r = await post("/api/prompt", { text: $("#s0-prompt").value, reason: $("#s0-preason").value });
+    $("#s0-preason").value = ""; memo.promptLoaded = false; toast(`New prompt version registered: ${esc(r.uri)}`);
+  },
+  async promptSync() { const r = await post("/api/prompt/sync"); toast(`Prompt registered: ${esc(r.uri)}`); },
+  async selftest() {
+    region("ck-tests", `<div class="notice info">${I.pulse}<div>Running the test suite…</div></div>`);
+    const r = await post("/api/selftest");
+    region("ck-tests", `${gateBanner(r.ok, "Integration tests", esc(r.summary))}
+      <div class="table-wrap"><table><tbody>${r.tests.map((t) => `<tr><td>${t.result === "PASSED" ? pill(true) : t.result === "SKIPPED" ? '<span class="pill neutral">skipped</span>' : pill(false)}</td><td class="mono small">${esc(t.test)}</td></tr>`).join("")}</tbody></table></div>
+      ${r.ok ? "" : `<details class="disclose" style="margin-top:10px"><summary>Output</summary><div><pre class="yaml">${esc(r.output)}</pre></div></details>`}`);
+  },
+  async rehearse() {
+    if (!$("#ck-confirm").checked) throw new Error("Tick the confirmation box first.");
+    await post("/api/jobs", { kind: "rehearsal", params: { rollback_demo: $("#ck-rb").checked, reset_after: $("#ck-reset").checked } });
+    memo.rehearsal = null; toast("Rehearsal started: follow the progress here.");
   },
   async tamper() {
     const r = await post("/api/audit/tamper");
@@ -920,6 +979,7 @@ function route() {
   const meta = PAGES_META.find((p) => p.id === id) || PAGES_META[0];
   $("#crumb").textContent = meta.n != null ? `Chapter ${meta.n} · ${meta.label}` : meta.label;
   if (id !== "policy") memo.policyLoaded = false;
+  if (id !== "s0") memo.promptLoaded = false;
   $("#view").innerHTML = page.render();
   $("#sidebar").classList.remove("open");
   window.scrollTo(0, 0);

@@ -171,6 +171,56 @@ def live_check() -> list[dict]:
     return out
 
 
+@app.post("/api/selftest")
+def selftest(a: Actor) -> dict:
+    """Run the integration test suite against the live stack (about 10 s, 1 real Groq call)."""
+    import subprocess
+    import sys
+
+    r = subprocess.run([sys.executable, "-m", "pytest", "-q", "-rA", "--no-header", "-p", "no:cacheprovider", "tests"],
+                       cwd=core.ROOT, capture_output=True, text=True, timeout=600)
+    out = r.stdout + r.stderr
+    tests = [{"test": line.split("::", 1)[1].split(" ")[0], "result": line.split(" ", 1)[0]}
+             for line in out.splitlines() if line.startswith(("PASSED", "FAILED", "SKIPPED", "ERROR")) and "::" in line]
+    summary = next((l for l in reversed(out.splitlines()) if " passed" in l or " failed" in l), out[-200:])
+    core.audit(a.label, "system_check", "integration_tests", "PASS" if r.returncode == 0 else "FAIL", {"summary": summary})
+    return {"ok": r.returncode == 0, "summary": summary.strip("= "), "tests": tests, "output": out[-6000:]}
+
+
+class PromptEdit(Actor):
+    text: str
+    reason: str = ""
+
+
+@app.get("/api/prompt")
+def get_prompt() -> dict:
+    return {"text": core.system_prompt_text(), "state": core.get_state("prompt") or {},
+            "editors": core.policy()["approvals"]["policy_change"]}
+
+
+@app.post("/api/prompt")
+def save_prompt(e: PromptEdit) -> dict:
+    """Governed prompt change: role check, reason required, new Prompt Registry version, audited."""
+    lifecycle.require_role("policy_change", e.role)
+    if not e.reason.strip():
+        raise GovernanceError("A reason is required.")
+    text = e.text.replace("\r\n", "\n").strip()
+    if len(text) < 50:
+        raise GovernanceError("The prompt looks empty.")
+    if text == core.system_prompt_text():
+        raise GovernanceError("Nothing changed.")
+    core.SYSTEM_PROMPT_FILE.write_text(text + "\n", encoding="utf-8")
+    state = lifecycle.ensure_prompt(e.label)
+    core.audit(e.label, "baseline", "prompt_changed", "APPROVED", {"reason": e.reason, "prompt_uri": state["uri"]})
+    return state
+
+
+@app.post("/api/prompt/sync")
+def prompt_sync(a: Actor) -> dict:
+    """Register governance/policy.md as a new prompt version if it changed (no restart needed)."""
+    return lifecycle.ensure_prompt(a.label)
+
+
 @app.post("/api/chat")
 def chat(body: Chat) -> dict:
     r = httpx.post(f"{core.APP_URL}/chat", json={"message": body.message}, timeout=120)
@@ -182,7 +232,7 @@ def chat(body: Chat) -> dict:
 # --------------------------------------------------------------------------- jobs
 @app.post("/api/jobs")
 def enqueue(job: Job) -> dict:
-    if job.kind not in ("offline_eval", "replay", "drift"):
+    if job.kind not in ("offline_eval", "replay", "drift", "rehearsal"):
         raise HTTPException(400, "unknown job kind")
     return {"id": core.enqueue(job.kind, job.params, job.label)}
 
@@ -190,9 +240,17 @@ def enqueue(job: Job) -> dict:
 @app.get("/api/jobs")
 def jobs(kinds: str = "") -> list[dict]:
     return core.query("""SELECT id, kind, status, progress, error, actor, created_at, finished_at
-                         FROM governance.jobs WHERE kind = ANY(%s) AND created_at > COALESCE(
-                           (SELECT MAX(ts) FROM governance.audit_log WHERE action = 'demo_reset'), '-infinity')
+                         FROM governance.jobs WHERE kind = ANY(%s) AND (kind = 'rehearsal' OR created_at > COALESCE(
+                           (SELECT MAX(ts) FROM governance.audit_log WHERE action = 'demo_reset'), '-infinity'))
                          ORDER BY id DESC LIMIT 5""", (kinds.split(","),))
+
+
+@app.get("/api/jobs/{job_id}")
+def job_detail(job_id: int) -> dict:
+    rows = core.query("SELECT id, kind, status, progress, error, result FROM governance.jobs WHERE id = %s", (job_id,))
+    if not rows:
+        raise HTTPException(404, "no such job")
+    return rows[0]
 
 
 # --------------------------------------------------------------------------- stages 0-3
