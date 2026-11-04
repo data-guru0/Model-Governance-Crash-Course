@@ -14,8 +14,6 @@ import pytest
 
 from governance import core, lifecycle
 
-PAGES = ["Overview", "0 · Baseline", "1 · Proposal", "2 · Offline evaluation", "3 · Register challenger",
-         "4 · Shadow", "5 · Canary", "6 · Gradual rollout", "7 · Promotion & monitoring", "Audit log", "Policy"]
 
 
 def test_gateway_has_fixed_routes_and_governed_production_route():
@@ -96,13 +94,21 @@ def test_rollback_restores_champion_only():
         core.set_lifecycle(**{k: lc.get(k) for k in ("stage", "v2_weight", "shadow", "window", "champion")})
 
 
-def test_console_pages_render():
-    from streamlit.testing.v1 import AppTest
+def test_console_api_and_ui_serve():
+    """Every read endpoint the web console uses answers, and the single-page UI is served."""
+    from fastapi.testclient import TestClient
 
-    for page in PAGES:
-        at = AppTest.from_file(str(core.ROOT / "console" / "app.py"), default_timeout=60).run()
-        at.sidebar.radio[0].set_value(page).run()
-        assert not at.exception, f"{page}: {at.exception[0].value}"
+    from console.server import app
+
+    c = TestClient(app)
+    page = c.get("/")
+    assert page.status_code == 200 and "NovaBank Governance Console" in page.text
+    for path in ("/api/health", "/api/state", "/api/usage", "/api/proposal", "/api/offline", "/api/shadow",
+                 "/api/live", "/api/drift", "/api/audit", "/api/policy", "/api/jobs?kinds=replay",
+                 "/static/app.js", "/static/styles.css"):
+        assert c.get(path).status_code == 200, path
+    refused = c.post("/api/promote", json={"name": "test", "role": "Student"})
+    assert refused.status_code == 409 and "refused" in refused.json()  # governed actions refuse, never crash
 
 
 def test_simulated_records_are_labelled_and_never_reach_the_gateway():

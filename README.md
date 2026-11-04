@@ -37,7 +37,7 @@ Then open the console at **<http://localhost:8501>**. Stage 0 bootstraps itself 
 
 | UI | URL | Login |
 |---|---|---|
-| **Governance console** (drive the lesson here) | <http://localhost:8501> | none (pick a name + role in the sidebar) |
+| **Governance console** (drive the lesson here) | <http://localhost:8501> | none (pick a name + role in the top bar) |
 | MLflow (runs, Model Registry, Prompt Registry) | <http://localhost:5000> | none |
 | LiteLLM admin UI (routes, keys, spend logs) | <http://localhost:4000/ui> | user `admin`, password = `LITELLM_MASTER_KEY` from `.env` (default `sk-nova-master-local`) |
 | Nova Assist API (Swagger) | <http://localhost:8000/docs> | none |
@@ -53,7 +53,7 @@ flowchart LR
     gw -. silent_model mirror .-> v2
     worker[governance-worker<br/>jobs · shadow pairing · online judge<br/>auto gate + rollback] -->|route nova-judge| gw
     gw --> judge[(Groq<br/>qwen3.8-27b<br/>judge)]
-    console[governance-console<br/>Streamlit] -->|model-management API| gw
+    console[governance-console<br/>FastAPI + web UI] -->|model-management API| gw
     console --> mlflow[mlflow<br/>tracking + registry + prompts]
     worker --> mlflow
     gw --> pg[(postgres<br/>litellm · mlflow · governance)]
@@ -70,7 +70,7 @@ flowchart LR
 | `mlflow` | Tracking server, Model Registry (`nova-assist` with `@champion` / `@challenger` / `@retired`) and Prompt Registry (`nova-assist-system`) |
 | `nova-assist-app` | The "production application". It only holds its own virtual key (no Groq key, no master key) and tags every request with `request_id` and the traffic window. |
 | `governance-worker` | Bootstraps Stage 0. Runs evaluation and replay jobs. Pairs and judges shadow traffic, judges sampled live answers, and re-checks the live gate every 15 s with automatic rollback. |
-| `governance-console` | One page per stage, plus the audit log and policy editor |
+| `governance-console` | The web console you teach from (FastAPI JSON API + hand-built single-page UI). One page per stage, each explaining how it works, its gate, and what is real vs simulated, plus the audit log and policy editor. Every button calls the same governed functions in `governance/lifecycle.py`. |
 
 **Health:** every service has a Docker health check. Run `docker compose ps` (all should say `healthy` or `Up`), or open the console's **Overview** page, which shows each service's status and can make one live call per model.
 
@@ -124,7 +124,7 @@ docker compose exec governance-console pytest -q tests
 | Live check shows `401` / `invalid_api_key` | `GROQ_API_KEY` in `.env` is wrong. Fix it, then run `docker compose up -d litellm` to restart the gateway with it. |
 | Evaluation job `failed` with "rate limits", or it runs slowly | Expected on the free tier. Click **Run offline evaluation** again: finished examples are reused. If you hit the daily token cap, continue the next day. |
 | Canary says "not enough data" | At 20%, about 1 in 5 replayed requests reaches v2. Send more replay traffic until there are ≥ 5 challenger requests and ≥ 4 judged samples. |
-| Start over completely | Console → **0 · Baseline → Reset demo** restores Stage 0 and keeps the audit log. To wipe everything, including the audit log and MLflow, run `docker compose down -v` and then `docker compose up -d`. |
+| Start over completely | Console → **Baseline → Reset to Stage 0** restores Stage 0 and keeps the audit log. To wipe everything, including the audit log and MLflow, run `docker compose down -v` and then `docker compose up -d`. |
 
 ## Repository layout
 
@@ -142,7 +142,8 @@ docker compose exec governance-console pytest -q tests
 ├── app/                       # Nova Assist FastAPI service + MLflow pyfunc model
 ├── shadow/worker.py           # governance worker (shadow, online judge, jobs, auto-rollback)
 ├── evaluation/run_eval.py     # DeepEval suite + offline and drift gates
-├── console/app.py             # Streamlit governance console
+├── console/server.py          # governance console API (FastAPI)
+├── console/static/            # governance console web UI (HTML/CSS/JS, no build step)
 ├── postgres/init.sql          # governance schema, append-only triggers
 ├── reports/                   # generated governance reports
 └── tests/                     # integration tests against the real stack

@@ -10,10 +10,10 @@ The whole lesson follows **one change**: NovaBank wants to replace Nova Assist *
 
 1. Start the stack and open the console. On the **Overview** page all four services should show *healthy*. Click **Live check**: three ✅ lines mean the Groq key works.
 2. Read **Real calls vs simulated data** below and decide how you will explain it. The whole lesson uses about 9 real Groq calls; everything else is labelled simulated.
-3. Optional dress rehearsal: run Stages 1 and 2 once, then **0 · Baseline → Reset demo**. Reset keeps the cached per-example scores (same model, data and judge means the same evidence), so the live Stage 2 click then finishes in seconds and still writes fresh MLflow runs.
+3. Optional dress rehearsal: run Stages 1 and 2 once, then **Baseline → Reset to Stage 0**. Reset keeps the cached per-example scores (same model, data and judge means the same evidence), so the live Stage 2 click then finishes in seconds and still writes fresh MLflow runs.
 4. Keep `governance/policy.yaml` open in an editor so students can see the thresholds.
 
-> Throughout the lesson, use the sidebar to set **your name** and **role**. Approvals are refused for the wrong role. That is intentional; show it at least once.
+> Throughout the lesson, use the **top bar** (person icon) to set **your name** and **role**. Every stage page opens with a *How this stage works* panel (flow, why companies do it, the gate, and what is real vs simulated): read it aloud before clicking. Approvals are refused for the wrong role. That is intentional; show it at least once.
 
 ## Timed lesson plan
 
@@ -115,7 +115,7 @@ You cannot govern what you have not inventoried. Before any change, write down e
 *Why:* SR 11-7 starts with a **model inventory**. Most real incidents begin with "we weren't sure which version was live".
 
 ### 2. What to show
-1. **Overview** page. Point at the four health tiles. In the *Models behind the gateway* table:
+1. **Overview** page. Point at the four health tiles. In the *Routes behind the gateway* table:
    - `nova-v1`, `nova-v2` and `nova-judge` come from the **config file**.
    - `nova-assist` (weight 100, version v1) is **stored in the LiteLLM DB**, so only governed actions can change it.
 2. **0 · Baseline.** The registry table shows **registry version 1** with alias `champion` and tags:
@@ -157,7 +157,7 @@ A change starts as a written, structured request: why, for what use, with what r
    - **Out of scope:** no financial advice and no handling of credentials. This is what the red-team set tests.
 2. Expand the **model card**. Note that it deliberately contains **no numbers**: the MLflow runs are the source of truth, and numbers copied into documents go stale.
 3. Click **Submit proposal to the governance board**.
-4. In the sidebar set your role to **Student**, choose **Approve**, write a rationale and submit. It is **refused**, because only a Model Risk Officer or the Governance Board can approve.
+4. In the top bar set your role to **Student**, choose **Approve**, write a rationale and submit. It is **refused**, because only a Model Risk Officer or the Governance Board can approve.
 5. Switch to **Model Risk Officer**, approve with a rationale ("Medium risk accepted; proceed under policy 1.0"). Then open the **Audit log** page and show the two new entries: submitted, then APPROVED, with the proposal file's SHA.
 6. In MLflow, the registered model now carries the tags `proposal.v2.status=approved` and `proposal.v2.approver`.
 
@@ -283,7 +283,7 @@ v2 receives a **copy of real production traffic** but its answers are never show
 ### 2. What to show
 1. **4 · Shadow.** As **ML Platform Lead**, fill in the approval form → *Approve: start shadow mirroring*. Then on **Overview → Models behind the gateway**, the `nova-assist` v1 deployment now shows `silent_model = nova-v2`. That is LiteLLM's native mirroring.
 2. Click **Send traffic** (1 REAL + 400 SIMULATED). The real one is a customer question from `data/replay.jsonl`, never seen in the golden set; it really goes to v1 and is really mirrored to v2 by LiteLLM.
-3. Watch the tiles fill. It takes about 20 seconds, mostly waiting for the real pair to be judged. Hover **Judged** to see how many judgements were real.
+3. Watch the tiles fill. It takes about 20 seconds, mostly waiting for the real pair to be judged. The **Judged** tile says how many judgements were made by the real LLM judge, and the pairs table lists real pairs first.
    - **Pairs:** each customer request matched to its mirrored v2 call from LiteLLM's spend logs.
    - **Judged:** the judge compared both answers. A/B positions are randomised to counter **position bias**.
    - **Win + tie rate:** the share of judgements where v2 was at least as good.
@@ -394,8 +394,8 @@ With all gates passed at 100%, make it official: v2 becomes **champion**, and v1
    - every gate decision with its policy version (including the rollback incident)
    - the traffic timeline with approvals
    - the full audit trail, with the **hash chain verified INTACT**
-3. **Run drift check now** re-evaluates the champion with fresh calls and compares it with its reference evaluation (allowed drop: 0.05). It re-runs 4 golden examples with fresh calls and compares them with the reference scores for the same 4 examples. It takes about 2–3 minutes. In production this is a scheduled job, for example nightly.
-4. **Audit log** page: click **Prove it: try to edit history**. Postgres refuses the edit because the table is append-only.
+3. **Run drift check now** re-evaluates the champion and compares it with its reference evaluation (allowed drop: 0.05). It is simulated in classroom mode and finishes in seconds. Set `simulation.drift_shift: -0.10` on the Policy page first to show a detection. In production this is a scheduled job, for example nightly.
+4. **Audit log** page: click **Try to edit history**. Postgres refuses the edit because the table is append-only.
 
 ### 3. Talking points and student questions
 - *"Why not delete v1?"* Rollback must stay one click away, and auditors need to reproduce past decisions. Retire, don't delete.

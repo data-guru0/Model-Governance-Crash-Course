@@ -115,7 +115,11 @@ def registry_versions() -> list[dict]:
         versions = client().search_model_versions(f"name='{name}'")
     except Exception:  # noqa: BLE001 - model not registered yet
         return []
-    return sorted([{"version": v.version, "aliases": list(v.aliases), "tags": dict(v.tags),
+    # search_model_versions does not populate aliases; the registered model holds the alias map.
+    by_version: dict[str, list[str]] = {}
+    for alias, version in client().get_registered_model(name).aliases.items():
+        by_version.setdefault(str(version), []).append(alias)
+    return sorted([{"version": v.version, "aliases": by_version.get(str(v.version), []), "tags": dict(v.tags),
                     "run_id": v.run_id, "created": v.creation_timestamp} for v in versions],
                   key=lambda x: int(x["version"]))
 
@@ -375,7 +379,7 @@ def shadow_gate(actor: str) -> tuple[bool, list[dict], dict]:
     if passed:
         core.set_traffic(0, shadow=False)  # stop mirroring; canary is a separate approved action
         core.set_state("shadow_passed_once", True)
-        core.set_lifecycle(stage="shadow_passed", shadow=False, shadow_stats=s)
+        core.set_lifecycle(stage="shadow_passed", shadow=False, shadow_stats=s, shadow_window=lc["window"])
     return passed, checks, s
 
 
@@ -516,6 +520,9 @@ def reset_demo(actor: str) -> None:
     if v1:
         client().set_registered_model_alias(name, "champion", v1)
         client().set_model_version_tag(name, v1, "status", "production")
+    for v in registry_versions():  # earlier challengers stay in the registry (never deleted), clearly marked
+        if v["version"] != v1 and v["tags"].get("status") != "superseded (demo reset)":
+            client().set_model_version_tag(name, v["version"], "status", "superseded (demo reset)")
     for table in ("requests", "shadow_pairs", "gate_decisions"):
         core.query(f"DELETE FROM governance.{table}")
     core.query("UPDATE governance.jobs SET status = 'cancelled' WHERE status IN ('queued', 'running')")

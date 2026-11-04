@@ -108,15 +108,14 @@ services:
     environment:
       <<: *python-env
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
-    command: ["streamlit", "run", "console/app.py", "--server.port", "8501", "--server.address", "0.0.0.0",
-              "--browser.gatherUsageStats", "false"]
+    command: ["uvicorn", "console.server:app", "--host", "0.0.0.0", "--port", "8501"]
     ports: ["8501:8501"]
     depends_on:
       litellm: {condition: service_healthy}
       mlflow: {condition: service_healthy}
       postgres: {condition: service_healthy}
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health', timeout=5)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/', timeout=5)"]
       interval: 10s
       timeout: 6s
       retries: 30
