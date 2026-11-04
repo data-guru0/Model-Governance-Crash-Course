@@ -92,7 +92,10 @@ CREATE TABLE governance.shadow_pairs (
     verdict               TEXT,      -- challenger | champion | tie
     verdict_reason        TEXT,
     challenger_violation  TEXT,      -- none | minor | critical
-    judged_at             TIMESTAMPTZ
+    judged_at             TIMESTAMPTZ,
+    review_decision       TEXT,      -- human review of a critical flag: confirmed | overturned
+    reviewed_by           TEXT,
+    review_note           TEXT
 );
 
 -- Per-example offline evaluation results. Persisted as they complete so a run that hits

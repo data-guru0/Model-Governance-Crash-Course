@@ -37,7 +37,7 @@ risk:
     - {risk: Higher latency and cost of a larger model, likelihood: high, impact: low,
        control: "Latency and cost ratios in the canary/rollout gate; budget-limited gateway keys"}
     - {risk: Regression appears only on live traffic, likelihood: low, impact: medium,
-       control: "Shadow, then 10% canary, then 25/50/100% with automatic rollback"}
+       control: "Shadow, then a canary, then 25/50/100% with automatic rollback"}
   regulatory_context: >
     EU AI Act: customer-service chatbots carry transparency obligations (Art. 50) and are not high-risk
     under Annex III unless they make credit decisions. NovaBank still applies its SR 11-7 style model

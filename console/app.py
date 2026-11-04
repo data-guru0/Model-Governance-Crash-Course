@@ -313,8 +313,9 @@ elif page == "4 · Shadow":
 v1 answer. The worker pairs both answers from LiteLLM's logs and the judge compares them, with A/B
 positions randomised to counter position bias.""")
     lc = core.lifecycle()
-    if lc["stage"] in ("challenger_registered", "shadow_failed"):
-        res = approval_form("shadow-form", "traffic_change", "Approve: start shadow mirroring")
+    if lc["stage"] in ("challenger_registered", "shadow_failed", "shadow"):
+        res = approval_form("shadow-form", "traffic_change",
+                            "Approve: start shadow mirroring" if lc["stage"] != "shadow" else "Approve: restart shadow (new window)")
         if res:
             governed(lifecycle.start_shadow, res[0], res[1], success="Mirroring on.")
     if lc["stage"] == "shadow":
@@ -334,6 +335,29 @@ positions randomised to counter position bias.""")
                               JOIN governance.requests r USING (request_id) WHERE r.stage = %s ORDER BY p.id DESC""",
                            (lc["window"],))
         st.dataframe(pd.DataFrame(pairs), hide_index=True, width="stretch")
+        flagged = core.query("""SELECT p.id, p.prompt, p.challenger_response, p.verdict_reason, p.review_decision,
+                                 p.reviewed_by FROM governance.shadow_pairs p JOIN governance.requests r USING (request_id)
+                                 WHERE r.stage = %s AND p.challenger_violation = 'critical' ORDER BY p.id""",
+                              (lc["window"],))
+        if flagged:
+            st.subheader("Human review of critical violations")
+            st.caption("The LLM judge can be wrong. Each critical flag blocks the gate until a Model Risk Officer "
+                       "confirms it or overturns it with a reason (recorded in the audit log).")
+            for f in flagged:
+                with st.expander(f"Pair {f['id']}: {f['review_decision'] or 'NOT REVIEWED'}: {f['prompt'][:80]}"):
+                    st.markdown(f"**Judge:** {f['verdict_reason']}")
+                    st.markdown(f"**v2 answer:**\n\n{f['challenger_response']}")
+                    if not f["review_decision"]:
+                        note = st.text_input("Review reason", key=f"note-{f['id']}")
+                        c1, c2 = st.columns(2)
+                        if c1.button("Confirm violation", key=f"conf-{f['id']}"):
+                            governed(lifecycle.review_violation, f["id"], st.session_state["name"],
+                                     st.session_state["role"], True, note, success="Confirmed.")
+                        if c2.button("Overturn (judge was wrong)", key=f"over-{f['id']}"):
+                            governed(lifecycle.review_violation, f["id"], st.session_state["name"],
+                                     st.session_state["role"], False, note, success="Overturned.")
+                    else:
+                        st.caption(f"Reviewed by {f['reviewed_by']}")
         if st.button("Check shadow gate", type="primary"):
             out = governed(lifecycle.shadow_gate, actor(), success="Gate evaluated.")
             if out:

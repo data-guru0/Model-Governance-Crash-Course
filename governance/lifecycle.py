@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import statistics
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 import httpx
@@ -196,6 +197,17 @@ def job_baseline_eval(job_id: int, actor: str) -> dict:
     return {"run_id": result["run_id"], "overall": result["overall"]}
 
 
+def job_prescore(job_id: int, version: str, actor: str) -> dict:
+    """Background warm-up: score a candidate on the golden set so the governed Stage 2 run (which
+    makes the gate decision and writes the MLflow evidence) doesn't keep a class waiting."""
+    from evaluation.run_eval import run_evaluation
+
+    out = run_evaluation(version, "prescore", actor, job_id, prescore=True)
+    core.audit(actor, "offline_evaluation", "candidate_prescored", None,
+               {"version": version, "examples": out["scored"], "note": "scores cached; no gate decision"})
+    return out
+
+
 def job_offline_eval(job_id: int, actor: str) -> dict:
     from evaluation.run_eval import offline_gate, run_evaluation
 
@@ -254,8 +266,25 @@ def change_traffic(stage: str, v2_percent: int, shadow: bool, approver: str, rol
 
 
 def start_shadow(approver: str, role: str) -> dict:
-    require_stage("challenger_registered", "shadow_failed")
-    return change_traffic("shadow", 0, True, approver, role, "Start shadow: mirror 100% of traffic to v2 silently")
+    require_stage("challenger_registered", "shadow_failed", "shadow")
+    return change_traffic("shadow", 0, True, approver, role,
+                          "Start shadow (new window): mirror 100% of traffic to v2 silently")
+
+
+def review_violation(pair_id: int, reviewer: str, role: str, confirm: bool, note: str) -> None:
+    """Human oversight of the LLM judge: a critical violation blocks the shadow gate until a
+    reviewer confirms it (it keeps blocking) or overturns it with a written reason."""
+    require_role("violation_review", role)
+    if not note.strip():
+        raise GovernanceError("A review needs a written reason.")
+    decision = "confirmed" if confirm else "overturned"
+    rows = core.query("""UPDATE governance.shadow_pairs SET review_decision=%s, reviewed_by=%s, review_note=%s
+                         WHERE id=%s AND challenger_violation='critical' RETURNING request_id""",
+                      (decision, f"{reviewer} ({role})", note, pair_id))
+    if not rows:
+        raise GovernanceError(f"Pair {pair_id} has no critical violation to review.")
+    core.audit(f"{reviewer} ({role})", "shadow", "violation_review", decision.upper(),
+               {"pair_id": pair_id, "request_id": rows[0]["request_id"], "note": note})
 
 
 def start_canary(approver: str, role: str) -> dict:
@@ -311,8 +340,16 @@ def job_replay(job_id: int, count: int, actor: str) -> dict:
             stats["error"] += 1
         core.job_progress(job_id, f"{stats['ok'] + stats['error']}/{count} sent, by version {stats['by_version']}")
 
+    # Paced like real traffic: a burst faster than the provider allows would make LiteLLM drop
+    # mirrored (silent) calls on 429 without logging them, which is a replay artefact, not model quality.
+    interval = 60 / core.policy()["replay"]["requests_per_minute"]
     with ThreadPoolExecutor(max_workers=core.policy()["rate_limits"]["concurrency"]) as pool:
-        list(pool.map(send, batch))
+        futures = []
+        for row in batch:
+            futures.append(pool.submit(send, row))
+            time.sleep(interval)
+        for f in futures:
+            f.result()
     return stats
 
 
@@ -333,7 +370,11 @@ def shadow_stats(window: str) -> dict:
     return {"pairs": len(rows), "judged": len(judged), "challenger_wins": wins, "ties": ties,
             "champion_wins": sum(r["verdict"] == "champion" for r in judged),
             "win_tie_rate": (wins + ties) / len(judged) if judged else None,
-            "critical_violations": sum(r["challenger_violation"] == "critical" for r in judged),
+            "critical_violations": sum(r["challenger_violation"] == "critical" and r["review_decision"] != "overturned"
+                                       for r in judged),
+            "critical_unreviewed": sum(r["challenger_violation"] == "critical" and r["review_decision"] is None
+                                       for r in judged),
+            "critical_overturned": sum(r["review_decision"] == "overturned" for r in judged),
             "minor_violations": sum(r["challenger_violation"] == "minor" for r in judged),
             "error_rate": len(errors) / len(rows) if rows else None,
             "champion_latency_ms": mean("champion_latency_ms", ok),
@@ -455,17 +496,18 @@ def promote(approver: str, role: str) -> str:
 
 # --------------------------------------------------------------------------- continuous governance (job)
 def job_drift(job_id: int, actor: str) -> dict:
-    from evaluation.run_eval import drift_check, run_evaluation
+    from evaluation.run_eval import drift_check, reference_subset, run_evaluation
 
     champion = core.lifecycle().get("champion", "v1")
     ref = core.get_state(f"reference_eval.{champion}")
-    current = run_evaluation(champion, "drift-check", actor, job_id, fresh=True)
+    current = run_evaluation(champion, "drift-check", actor, job_id, fresh=True,
+                             golden_limit=core.policy()["drift"]["probe_examples"])
     if not ref:
         core.set_state(f"reference_eval.{champion}", current)
         core.audit(actor, "continuous_governance", "drift_reference_set", None,
                    {"champion": champion, "run_id": current["run_id"]})
         return {"reference_set": True, "run_id": current["run_id"]}
-    checks = drift_check(current, ref)
+    checks = drift_check(current["overall"], reference_subset(ref["run_key"], current["example_ids"]))
     passed = core.record_gate("continuous_governance", checks,
                               {"champion": champion, "run_id": current["run_id"], "reference_run": ref["run_id"]}, actor)
     client().set_tag(current["run_id"], "drift_gate", "PASS" if passed else "DRIFT")

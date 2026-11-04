@@ -206,8 +206,11 @@ def aggregate(results: list[dict], pass_score: float) -> tuple[dict, dict]:
 
 # --------------------------------------------------------------------------- entry point
 def run_evaluation(version: str, purpose: str, actor: str, job_id: int | None = None,
-                   fresh: bool = False) -> dict:
-    """Evaluate one model version. `fresh=True` (drift checks) ignores cached example results."""
+                   fresh: bool = False, golden_limit: int | None = None, prescore: bool = False) -> dict:
+    """Evaluate one model version.
+    fresh=True        ignore cached example results (drift checks need new calls)
+    golden_limit=N    only the first N golden examples, no red-team (small drift probe)
+    prescore=True     score and cache examples only: no MLflow run, no gate (background warm-up)"""
     pol = core.policy()
     ev = pol["evaluation"]
     profile = ev["profiles"][ev["profile"]]
@@ -216,6 +219,8 @@ def run_evaluation(version: str, purpose: str, actor: str, job_id: int | None = 
     golden, red = select_examples(profile)
     for g in golden:
         g["slice"] = g[profile["slice_by"]]
+    if golden_limit is not None:
+        golden, red = golden[:golden_limit], []
     examples = golden + red
 
     judge_route = ev["judge_route"]
@@ -263,6 +268,8 @@ def run_evaluation(version: str, purpose: str, actor: str, job_id: int | None = 
         raise RuntimeError(f"{len(failures)} of {len(examples)} examples failed (likely rate limits); "
                            f"{len(done)} saved, re-run to resume. First error: {failures[0]['error']}")
 
+    if prescore:
+        return {"version": version, "run_key": run_key, "scored": len(examples), "reused_cached_examples": reused}
     results = [done[e["id"]] for e in examples]
     overall, slices = aggregate(results, ev["redteam_pass_score"])
 
@@ -293,6 +300,7 @@ def run_evaluation(version: str, purpose: str, actor: str, job_id: int | None = 
         run_id = run.info.run_id
 
     return {"version": version, "run_id": run_id, "run_key": run_key, "overall": overall, "slices": slices,
+            "example_ids": [e["id"] for e in examples],
             "reused_cached_examples": reused, "dataset_version": dataset_version(), "profile": ev["profile"]}
 
 
@@ -320,17 +328,26 @@ def offline_gate(challenger: dict, champion: dict) -> list[dict]:
     return checks
 
 
+def reference_subset(run_key: str, example_ids: list[str]) -> dict:
+    """Reference scores restricted to the examples a drift probe re-ran (like-for-like comparison)."""
+    rows = core.query("SELECT result FROM governance.eval_results WHERE run_key = %s AND example_id = ANY(%s)",
+                      (run_key, example_ids))
+    overall, _ = aggregate([r["result"] for r in rows], core.policy()["evaluation"]["redteam_pass_score"])
+    return overall
+
+
 def drift_check(current: dict, reference: dict) -> list[dict]:
-    """Continuous governance: the champion today vs the champion's own reference evaluation."""
+    """Continuous governance: today's scores vs the champion's reference scores on the SAME examples.
+    Both arguments are `overall` metric dicts."""
     max_drop = core.policy()["drift"]["max_drop"]
     ev = core.policy()["evaluation"]
     checks = []
     for m, rule in ev["thresholds"].items():
-        if m.startswith("latency") or reference["overall"].get(m) is None:
+        if m.startswith("latency") or reference.get(m) is None:
             continue
-        ref = reference["overall"][m]
+        ref = reference[m]
         bound = {"min": ref - max_drop} if "min" in rule else {"max": ref + max_drop}
-        checks.append(core.check(f"drift.{m} (reference {ref:.3f})", current["overall"].get(m), bound))
+        checks.append(core.check(f"drift.{m} (reference {ref:.3f})", current.get(m), bound))
     return checks
 
 

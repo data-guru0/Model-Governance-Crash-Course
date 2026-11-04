@@ -14,7 +14,7 @@ Everything is real:
 > | Need | How it is done | Native? |
 > |---|---|---|
 > | Traffic split (canary/rollout) | LiteLLM router `weight` on deployments of the `nova-assist` route, changed at runtime through LiteLLM's model-management API (`/model/new`, `/model/delete`, `store_model_in_db`) | **Native.** Models defined in `litellm_config.yaml` cannot be edited at runtime, so the governed production route lives in the LiteLLM DB. The console is the only thing that edits it. |
-> | Shadow traffic mirroring | LiteLLM `silent_model` on the champion deployment | **Native.** We add pairing and judging: the worker matches each mirrored call in `LiteLLM_SpendLogs` to the customer's request by our `request_id` (which LiteLLM copies into `spend_logs_metadata`). The `is_silent_experiment` flag needs LiteLLM ≥ 1.109, and we pin the latest stable 1.108.0, so the worker does not rely on it. |
+> | Shadow traffic mirroring | LiteLLM `silent_model` on the champion deployment | **Native.** LiteLLM does not retry or log silent calls that fail (e.g. on 429), so replay is paced (`replay.requests_per_minute`) and missing mirrors count as challenger errors. We add pairing and judging: the worker matches each mirrored call in `LiteLLM_SpendLogs` to the customer's request by our `request_id` (which LiteLLM copies into `spend_logs_metadata`). The `is_silent_experiment` flag needs LiteLLM ≥ 1.109, and we pin the latest stable 1.108.0, so the worker does not rely on it. |
 > | Fallbacks, retries, virtual keys with model allow-lists, RPM limits and budgets, spend and request logging to Postgres | LiteLLM open-source proxy | **Native** |
 > | Model registry, aliases, Prompt Registry, runs, datasets, tables | MLflow 3.18 | **Native** |
 > | Evaluation metrics (relevancy, G-Eval, toxicity, bias) | DeepEval 4.3.3 with a small custom-model adapter (`GatewayJudge`) so the judge is called through our gateway | **Native metrics.** We wrote the adapter, because DeepEval's `LiteLLMModel` would need a second copy of the LiteLLM SDK in the image. |
@@ -72,7 +72,7 @@ flowchart LR
 | `litellm` | The only path to Groq. Fixed routes `nova-v1`, `nova-v2` and `nova-judge` live in `litellm_config.yaml`. The governed production route `nova-assist` lives in the DB. |
 | `mlflow` | Tracking server, Model Registry (`nova-assist` with `@champion` / `@challenger` / `@retired`) and Prompt Registry (`nova-assist-system`) |
 | `nova-assist-app` | The "production application". It only holds its own virtual key (no Groq key, no master key) and tags every request with `request_id` and the traffic window. |
-| `governance-worker` | Bootstraps Stage 0. Runs evaluation and replay jobs. Pairs and judges shadow traffic, judges sampled live answers, and re-checks the live gate every 30 s with automatic rollback. |
+| `governance-worker` | Bootstraps Stage 0. Runs evaluation and replay jobs. Pairs and judges shadow traffic, judges sampled live answers, and re-checks the live gate every 15 s with automatic rollback. |
 | `governance-console` | One page per stage, plus the audit log and policy editor |
 
 **Health:** every service has a Docker health check. Run `docker compose ps` (all should say `healthy` or `Up`), or open the console's **Overview** page, which shows each service's status and can make one live call per model.
@@ -100,14 +100,14 @@ Measured from response headers for this key: **1,000 requests/day, 8,000 tokens/
 
 | Step | Groq calls (approx.) | Time on the free tier |
 |---|---|---|
-| Champion baseline (runs automatically at first start) | 14 answers + ~70 judge calls | ~8 min, in the background |
-| Stage 2 offline eval, `demo` profile (9 golden + 5 red-team per version; v1 reused from baseline) | 14 answers + ~70 judge calls | **~5–10 min** |
-| Stage 4 shadow (45 requests) | 45 v1 + 45 v2 + 45 judge | ~3 min |
-| Stage 5 canary (120 requests at 10%) | 120 answers + ~25 judge | ~5 min |
-| Stage 6 rollout (25/50/100%) | ~80 answers + ~60 judge | ~6 min |
-| Drift check | same as one version of Stage 2, fresh calls | ~8 min |
+| Background at first start: v1 baseline + v2 warm-up (14 examples each) | 28 answers + ~140 judge calls | ~15–20 min, unattended |
+| Stage 2 offline eval (governed run, reuses the pre-scored examples) | ~0 | seconds |
+| Stage 4 shadow (8 requests, paced at 12/min) | 8 v1 + 8 v2 + 8 judge | ~2 min |
+| Stage 5 canary (20 requests at 20%) | 20 answers + ~5 judge | ~2–3 min |
+| Stage 6 rollout (16 / 8 / 4 requests at 25 / 50 / 100%) | 28 answers + ~15 judge | ~1–2 min per step |
+| Stage 7 drift check (4 fresh golden examples) | 4 answers + ~20 judge | ~2–3 min |
 
-The bottleneck is the judge: Groq's free tier also caps **output tokens at 1,000 per minute** per model, which is roughly 8 judge calls per minute. Bigger profiles exist and reuse already-scored examples: `lite` (27 + 12, ~30 min per version) and `full` (130 + 12, a paid tier or multi-day resumable runs). Switch under `evaluation.profile` on the console's Policy page. DEMO.md lists what a production evaluation adds on top.
+The bottleneck is the judge: Groq's free tier also caps **output tokens at 1,000 per minute** per model, which is roughly 8 judge calls per minute. These are **classroom volumes**. DEMO.md ("Why the numbers are so small") explains what production uses and why. Bigger evaluation profiles exist and reuse already-scored examples: `lite` (27 + 12, ~30 min per version) and `full` (130 + 12, a paid tier or multi-day resumable runs). Switch under `evaluation.profile` on the console's Policy page. DEMO.md lists what a production evaluation adds on top.
 
 ## Running the tests
 
@@ -125,7 +125,7 @@ docker compose exec governance-console pytest -q tests
 | Console says "Stack not ready" | Wait about a minute after `up`, then check `docker compose ps`. The worker bootstraps Stage 0 once LiteLLM and MLflow are healthy. |
 | Live check shows `401` / `invalid_api_key` | `GROQ_API_KEY` in `.env` is wrong. Fix it, then run `docker compose up -d litellm` to restart the gateway with it. |
 | Evaluation job `failed` with "rate limits", or it runs slowly | Expected on the free tier. Click **Run offline evaluation** again: finished examples are reused. If you hit the daily token cap, continue the next day. |
-| Canary says "not enough data" | At 10%, about 1 in 10 replayed requests reaches v2. Send more replay traffic until there are ≥ 10 challenger requests and ≥ 8 judged samples. |
+| Canary says "not enough data" | At 20%, about 1 in 5 replayed requests reaches v2. Send more replay traffic until there are ≥ 5 challenger requests and ≥ 4 judged samples. |
 | Start over completely | Console → **0 · Baseline → Reset demo** restores Stage 0 and keeps the audit log. To wipe everything, including the audit log and MLflow, run `docker compose down -v` and then `docker compose up -d`. |
 
 ## Repository layout

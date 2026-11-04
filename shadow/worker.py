@@ -23,7 +23,7 @@ from psycopg.types.json import Jsonb
 from governance import core, lifecycle
 
 TICK_SECONDS = 5
-MIRROR_WAIT_SECONDS = 120   # a mirrored call missing after this long counts as a challenger error
+MIRROR_WAIT_SECONDS = 60   # a mirrored call missing after this long counts as a challenger error
 ACTOR = "governance-worker"
 
 PAIRWISE_PROMPT = """You are auditing a bank's customer-support assistant. The bank policy is:
@@ -67,6 +67,8 @@ def run_jobs_forever() -> None:
                 result = lifecycle.job_offline_eval(job["id"], job["actor"])
             elif job["kind"] == "baseline_eval":
                 result = lifecycle.job_baseline_eval(job["id"], job["actor"])
+            elif job["kind"] == "prescore":
+                result = lifecycle.job_prescore(job["id"], p["version"], job["actor"])
             elif job["kind"] == "replay":
                 result = lifecycle.job_replay(job["id"], int(p["count"]), job["actor"])
             elif job["kind"] == "drift":
@@ -184,6 +186,9 @@ def main() -> None:
     if not core.query("""SELECT 1 FROM governance.jobs WHERE kind = 'baseline_eval'
                          AND status IN ('queued', 'running', 'done')"""):
         core.enqueue("baseline_eval", {}, ACTOR)  # champion baseline evidence, runs during Stages 0-1
+    if not core.query("""SELECT 1 FROM governance.jobs WHERE kind = 'prescore'
+                         AND status IN ('queued', 'running', 'done')"""):
+        core.enqueue("prescore", {"version": "v2"}, ACTOR)  # warm the cache for the proposed challenger
     threading.Thread(target=run_jobs_forever, daemon=True).start()
     last_gate = 0.0
     print("governance worker running")
