@@ -1,0 +1,126 @@
+# NovaBank "Nova Assist" model-governance stack. Start with:  docker compose up -d
+# The only external dependency is the Groq API (key in .env).
+name: nova-governance
+
+x-python-service: &python-service
+  build: .
+  image: nova-governance-python:latest
+  # No env_file on purpose: the Groq key lives only in the gateway container (least privilege).
+  environment: &python-env
+    LITELLM_URL: http://litellm:4000
+    MLFLOW_TRACKING_URI: http://mlflow:5000
+    APP_URL: http://nova-assist-app:8000
+    GOV_DB_URL: postgresql://nova:${POSTGRES_PASSWORD}@postgres:5432/governance
+    LITELLM_DB_URL: postgresql://nova:${POSTGRES_PASSWORD}@postgres:5432/litellm
+  volumes:
+    - ./:/workspace
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: nova
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: governance
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nova -d governance"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  litellm:
+    image: litellm/litellm:v1.108.0
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    environment:
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      DATABASE_URL: postgresql://nova:${POSTGRES_PASSWORD}@postgres:5432/litellm
+      STORE_MODEL_IN_DB: "True"
+    volumes:
+      - ./litellm_config.yaml:/app/config.yaml:ro
+    ports: ["4000:4000"]
+    depends_on:
+      postgres: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness', timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+
+  mlflow:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM ghcr.io/mlflow/mlflow:v3.18.0
+        RUN pip install --no-cache-dir "psycopg[binary]"
+    image: nova-governance-mlflow:latest
+    command: >
+      mlflow server --host 0.0.0.0 --port 5000
+      --backend-store-uri postgresql://nova:${POSTGRES_PASSWORD}@postgres:5432/mlflow
+      --artifacts-destination /mlartifacts --serve-artifacts
+      --allowed-hosts mlflow,mlflow:5000,localhost,localhost:5000,127.0.0.1,127.0.0.1:5000
+    volumes:
+      - mlartifacts:/mlartifacts
+    ports: ["5000:5000"]
+    depends_on:
+      postgres: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 30
+      start_period: 20s
+    restart: unless-stopped
+
+  nova-assist-app:
+    <<: *python-service
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports: ["8000:8000"]
+    depends_on:
+      litellm: {condition: service_healthy}
+      postgres: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 30
+
+  governance-worker:
+    <<: *python-service
+    command: ["python", "-m", "shadow.worker"]
+    environment:
+      <<: *python-env
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+    depends_on:
+      litellm: {condition: service_healthy}
+      mlflow: {condition: service_healthy}
+      postgres: {condition: service_healthy}
+
+  governance-console:
+    <<: *python-service
+    environment:
+      <<: *python-env
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+    command: ["streamlit", "run", "console/app.py", "--server.port", "8501", "--server.address", "0.0.0.0",
+              "--browser.gatherUsageStats", "false"]
+    ports: ["8501:8501"]
+    depends_on:
+      litellm: {condition: service_healthy}
+      mlflow: {condition: service_healthy}
+      postgres: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health', timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 30
+
+volumes:
+  pgdata:
+  mlartifacts:

@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+.deepeval/
+.pytest_cache/
+reports/*.md
+reports/*.html
+!reports/.gitkeep

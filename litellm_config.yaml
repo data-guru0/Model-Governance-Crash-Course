@@ -1,0 +1,60 @@
+# LiteLLM gateway configuration (open-source proxy features only).
+#
+# Fixed routes, one per model version. Model IDs were confirmed against Groq's /models endpoint.
+#   nova-v1    -> champion at the start of the scenario
+#   nova-v2    -> challenger proposed by the product team
+#   nova-judge -> LLM-as-a-judge, used only for evaluation (different model family)
+#
+# The production route "nova-assist" is NOT defined here. The governance console creates its
+# deployments through LiteLLM's model-management API (store_model_in_db), because models
+# defined in this file cannot be edited at runtime. That is how traffic weights for canary and
+# rollout are changed without hand-editing files or restarting the gateway.
+#
+# Prices are Groq's published on-demand prices (USD per token) so LiteLLM can compute real cost.
+
+model_list:
+  - model_name: nova-v1
+    litellm_params:
+      model: groq/openai/gpt-oss-20b
+      api_key: os.environ/GROQ_API_KEY
+      reasoning_effort: low
+      input_cost_per_token: 0.000000075   # $0.075 / 1M
+      output_cost_per_token: 0.0000003    # $0.30 / 1M
+    model_info:
+      nova_version: v1
+
+  - model_name: nova-v2
+    litellm_params:
+      model: groq/openai/gpt-oss-120b
+      api_key: os.environ/GROQ_API_KEY
+      reasoning_effort: low
+      input_cost_per_token: 0.00000015    # $0.15 / 1M
+      output_cost_per_token: 0.0000006    # $0.60 / 1M
+    model_info:
+      nova_version: v2
+
+  - model_name: nova-judge
+    litellm_params:
+      model: groq/qwen/qwen3.8-27b
+      api_key: os.environ/GROQ_API_KEY
+      reasoning_format: hidden            # judge must return clean JSON, not its thinking
+      input_cost_per_token: 0.0000008     # $0.80 / 1M
+      output_cost_per_token: 0.000004     # $4.00 / 1M
+
+router_settings:
+  routing_strategy: simple-shuffle        # honours per-deployment "weight" -> traffic split
+  num_retries: 3                          # retries with backoff on 429 / 5xx
+  retry_after: 5                          # minimum seconds before retrying a rate-limited call
+  timeout: 90
+  # If the challenger fails during canary/rollout, the user still gets an answer from the champion.
+  # The failure is still recorded in LiteLLM_SpendLogs (status = failure) and counts against the gate.
+  fallbacks: [{"nova-assist": ["nova-v1"]}]
+
+litellm_settings:
+  drop_params: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+  store_model_in_db: true
+  store_prompts_in_spend_logs: true       # keep request/response text so shadow pairs can be judged

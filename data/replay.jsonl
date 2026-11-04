@@ -1,0 +1,208 @@
+{"id": "activate_card-250", "source_row": 250, "intent": "activate_card", "category": "CARD", "input": "i havw to activate a visa could i get some help"}
+{"id": "activate_card-228", "source_row": 228, "intent": "activate_card", "category": "CARD", "input": "wanna activate a credit card  online can ya help me"}
+{"id": "activate_card-142", "source_row": 142, "intent": "activate_card", "category": "CARD", "input": "I have to activate a Master Card online , where to do it?"}
+{"id": "activate_card-754", "source_row": 754, "intent": "activate_card", "category": "CARD", "input": "could ya help me activate an card"}
+{"id": "activate_card-104", "source_row": 104, "intent": "activate_card", "category": "CARD", "input": "I want to activate an card on mobile, help me"}
+{"id": "activate_card-692", "source_row": 692, "intent": "activate_card", "category": "CARD", "input": "I want to activate  a credit card"}
+{"id": "activate_card-758", "source_row": 758, "intent": "activate_card", "category": "CARD", "input": "id ilke to activate a visa how could i do it"}
+{"id": "activate_card-913", "source_row": 913, "intent": "activate_card", "category": "CARD", "input": "I need to activate a Master Card online"}
+{"id": "activate_card_international_usage-1030", "source_row": 1030, "intent": "activate_card_international_usage", "category": "CARD", "input": "I'm travelling overseas, I need help to activate a Master aCrd for international usage"}
+{"id": "activate_card_international_usage-1095", "source_row": 1095, "intent": "activate_card_international_usage", "category": "CARD", "input": "I am traveling overseas, I need help activaring a card for international usage"}
+{"id": "activate_card_international_usage-1223", "source_row": 1223, "intent": "activate_card_international_usage", "category": "CARD", "input": "im travbeling abroad i need help to activate an amex for international usage"}
+{"id": "activate_card_international_usage-1238", "source_row": 1238, "intent": "activate_card_international_usage", "category": "CARD", "input": "I'm traveling overseas, help me activating an Amex for international usage"}
+{"id": "activate_card_international_usage-1517", "source_row": 1517, "intent": "activate_card_international_usage", "category": "CARD", "input": "wanna activate a credit card for international usage can i get some help"}
+{"id": "activate_card_international_usage-1616", "source_row": 1616, "intent": "activate_card_international_usage", "category": "CARD", "input": "I'dd like to activate a card for international usage, could you help me?"}
+{"id": "activate_card_international_usage-1027", "source_row": 1027, "intent": "activate_card_international_usage", "category": "CARD", "input": "I'm travelling abroad i need to activate an amex for international usage"}
+{"id": "activate_card_international_usage-1574", "source_row": 1574, "intent": "activate_card_international_usage", "category": "CARD", "input": "I have to cativate a card for international usage, help me"}
+{"id": "apply_for_loan-2426", "source_row": 2426, "intent": "apply_for_loan", "category": "LOAN", "input": "i need a loan will uhelp me taking out it"}
+{"id": "apply_for_loan-2222", "source_row": 2222, "intent": "apply_for_loan", "category": "LOAN", "input": "i have to take out a loan how do i do it"}
+{"id": "apply_for_loan-2456", "source_row": 2456, "intent": "apply_for_loan", "category": "LOAN", "input": "i need help applying for an loan"}
+{"id": "apply_for_loan-2600", "source_row": 2600, "intent": "apply_for_loan", "category": "LOAN", "input": "can uhelp me to atke out a loan"}
+{"id": "apply_for_loan-2281", "source_row": 2281, "intent": "apply_for_loan", "category": "LOAN", "input": "im trying to find a loan can i  get some help"}
+{"id": "apply_for_loan-2825", "source_row": 2825, "intent": "apply_for_loan", "category": "LOAN", "input": "I want to applyfor a loan"}
+{"id": "apply_for_loan-2887", "source_row": 2887, "intent": "apply_for_loan", "category": "LOAN", "input": "could you help me take out a olan?"}
+{"id": "apply_for_loan-2003", "source_row": 2003, "intent": "apply_for_loan", "category": "LOAN", "input": "I'm looking folr a loan, where could I find it?"}
+{"id": "apply_for_mortgage-3337", "source_row": 3337, "intent": "apply_for_mortgage", "category": "LOAN", "input": "I am looking for a mortgage, I need assistance finding it"}
+{"id": "apply_for_mortgage-3273", "source_row": 3273, "intent": "apply_for_mortgage", "category": "LOAN", "input": "wanna apply for a  mortgage i need help"}
+{"id": "apply_for_mortgage-3148", "source_row": 3148, "intent": "apply_for_mortgage", "category": "LOAN", "input": "I have to apply for a mortgage, where do I do it?"}
+{"id": "apply_for_mortgage-3209", "source_row": 3209, "intent": "apply_for_mortgage", "category": "LOAN", "input": "I'm trying to fiund a mortgage can i get some help"}
+{"id": "apply_for_mortgage-3969", "source_row": 3969, "intent": "apply_for_mortgage", "category": "LOAN", "input": "I'd like to apply for a mortgage how could i do it"}
+{"id": "apply_for_mortgage-3770", "source_row": 3770, "intent": "apply_for_mortgage", "category": "LOAN", "input": "id like to apply for a mortgage where could i do it"}
+{"id": "apply_for_mortgage-3333", "source_row": 3333, "intent": "apply_for_mortgage", "category": "LOAN", "input": "im looking for a mortgage can uhelp me find it"}
+{"id": "apply_for_mortgage-3093", "source_row": 3093, "intent": "apply_for_mortgage", "category": "LOAN", "input": "i need a mrtgage could uhelp me take out it"}
+{"id": "block_card-4338", "source_row": 4338, "intent": "block_card", "category": "CARD", "input": "how do I lock a Visa on mobile?"}
+{"id": "block_card-4604", "source_row": 4604, "intent": "block_card", "category": "CARD", "input": "i cant find my credit card coild ya help me lock it"}
+{"id": "block_card-4256", "source_row": 4256, "intent": "block_card", "category": "CARD", "input": "what to do if I lost my Master Card, will you help me to block it?"}
+{"id": "block_card-4812", "source_row": 4812, "intent": "block_card", "category": "CARD", "input": "I'd like to lock a amex on mobile how could i do it"}
+{"id": "block_card-4030", "source_row": 4030, "intent": "block_card", "category": "CARD", "input": "I can't find my credit card, can you help me locking it?"}
+{"id": "block_card-4733", "source_row": 4733, "intent": "block_card", "category": "CARD", "input": "I have to lock an Amex, how can I do it?"}
+{"id": "block_card-4456", "source_row": 4456, "intent": "block_card", "category": "CARD", "input": "would it be possible to block a visa on mobile"}
+{"id": "block_card-4535", "source_row": 4535, "intent": "block_card", "category": "CARD", "input": "I need to blpck a credit card on mobile, help me"}
+{"id": "cancel_card-5284", "source_row": 5284, "intent": "cancel_card", "category": "CARD", "input": "I have to cancelo a card on mobile, could I get some help?"}
+{"id": "cancel_card-5833", "source_row": 5833, "intent": "cancel_card", "category": "CARD", "input": "I want to cancel a credit card, how could I do it?"}
+{"id": "cancel_card-5627", "source_row": 5627, "intent": "cancel_card", "category": "CARD", "input": "i dont wqnt my visa will uhelp me cancelling it"}
+{"id": "cancel_card-5617", "source_row": 5617, "intent": "cancel_card", "category": "CARD", "input": "I'd like to cancel an card online, I need help"}
+{"id": "cancel_card-5890", "source_row": 5890, "intent": "cancel_card", "category": "CARD", "input": "i got to cancel a visa i need assistance"}
+{"id": "cancel_card-5866", "source_row": 5866, "intent": "cancel_card", "category": "CARD", "input": "i dont want my amex I'd lije to cancel it"}
+{"id": "cancel_card-5354", "source_row": 5354, "intent": "cancel_card", "category": "CARD", "input": "id like to cancel an amex on mobile where to do it"}
+{"id": "cancel_card-5575", "source_row": 5575, "intent": "cancel_card", "category": "CARD", "input": "i got to cancel a credity card how can i do it"}
+{"id": "cancel_loan-6213", "source_row": 6213, "intent": "cancel_loan", "category": "LOAN", "input": "I can't pay for my loan, I neec help canceling it"}
+{"id": "cancel_loan-6771", "source_row": 6771, "intent": "cancel_loan", "category": "LOAN", "input": "helpme to cancel a loan"}
+{"id": "cancel_loan-6276", "source_row": 6276, "intent": "cancel_loan", "category": "LOAN", "input": "I don't want to pay for m loan, can you help me to cancel it?"}
+{"id": "cancel_loan-6061", "source_row": 6061, "intent": "cancel_loan", "category": "LOAN", "input": "i do not wanna  pay for my loan cancel it"}
+{"id": "cancel_loan-6855", "source_row": 6855, "intent": "cancel_loan", "category": "LOAN", "input": "I'd like to cancel a loan will uhep me"}
+{"id": "cancel_loan-6218", "source_row": 6218, "intent": "cancel_loan", "category": "LOAN", "input": "I want to cancel a loan, could you help me?"}
+{"id": "cancel_loan-6867", "source_row": 6867, "intent": "cancel_loan", "category": "LOAN", "input": "I do not want to pay for my loan , will you help me to cancel it?"}
+{"id": "cancel_loan-6083", "source_row": 6083, "intent": "cancel_loan", "category": "LOAN", "input": "i cant pay for my loan could i cacnel it"}
+{"id": "cancel_mortgage-7343", "source_row": 7343, "intent": "cancel_mortgage", "category": "LOAN", "input": "I'd like to caancel a mortgage, help me"}
+{"id": "cancel_mortgage-7136", "source_row": 7136, "intent": "cancel_mortgage", "category": "LOAN", "input": "i cannot pay for my mortgage could uhelp me canceling it"}
+{"id": "cancel_mortgage-7349", "source_row": 7349, "intent": "cancel_mortgage", "category": "LOAN", "input": "I want to cancel a mortgage, how could I do it?"}
+{"id": "cancel_mortgage-7333", "source_row": 7333, "intent": "cancel_mortgage", "category": "LOAN", "input": "i dont wanna pay for my mortgagecan ya help me canceling it"}
+{"id": "cancel_mortgage-7184", "source_row": 7184, "intent": "cancel_mortgage", "category": "LOAN", "input": "i dont weanna pay for my mortgage how do i cancel it"}
+{"id": "cancel_mortgage-7656", "source_row": 7656, "intent": "cancel_mortgage", "category": "LOAN", "input": "wanna cancel a mortgage i need assistance"}
+{"id": "cancel_mortgage-7243", "source_row": 7243, "intent": "cancel_mortgage", "category": "LOAN", "input": "can you help me canceling a mortgage?"}
+{"id": "cancel_mortgage-7688", "source_row": 7688, "intent": "cancel_mortgage", "category": "LOAN", "input": "I got to cancel an mortgage, could you help me?"}
+{"id": "cancel_transfer-8616", "source_row": 8616, "intent": "cancel_transfer", "category": "TRANSFER", "input": "i made a mistqke and i transferred money to the wrong account i want assistance cancelling a transfer"}
+{"id": "cancel_transfer-8141", "source_row": 8141, "intent": "cancel_transfer", "category": "TRANSFER", "input": "id like to cancel a fucking bank transfr i need help"}
+{"id": "cancel_transfer-8512", "source_row": 8512, "intent": "cancel_transfer", "category": "TRANSFER", "input": "I have to cancel a fucking bank transfer  to a contact, where could I do it?"}
+{"id": "cancel_transfer-8712", "source_row": 8712, "intent": "cancel_transfer", "category": "TRANSFER", "input": "id like to cancel a fucking bank transfer to a contact where do i do it"}
+{"id": "cancel_transfer-8216", "source_row": 8216, "intent": "cancel_transfer", "category": "TRANSFER", "input": "can you help me cfancel a fucking bank transfer to a contact?"}
+{"id": "cancel_transfer-8133", "source_row": 8133, "intent": "cancel_transfer", "category": "TRANSFER", "input": "i want help canceling  a transfer to a contact"}
+{"id": "cancel_transfer-8439", "source_row": 8439, "intent": "cancel_transfer", "category": "TRANSFER", "input": "i have to cancel a bank transfer to a contact"}
+{"id": "cancel_transfer-8354", "source_row": 8354, "intent": "cancel_transfer", "category": "TRANSFER", "input": "I have made a mistake, can you help me cancelling a banjk transfer?"}
+{"id": "check_card_annual_fee-9185", "source_row": 9185, "intent": "check_card_annual_fee", "category": "CARD", "input": "I cannot find my fuckiung card annuals fees, could I see them?"}
+{"id": "check_card_annual_fee-9662", "source_row": 9662, "intent": "check_card_annual_fee", "category": "CARD", "input": "id like to know about the fucking credit card annual fees how could i get more information"}
+{"id": "check_card_annual_fee-9293", "source_row": 9293, "intent": "check_card_annual_fee", "category": "CARD", "input": "i cant find my card annual fee could uhelp me check it"}
+{"id": "check_card_annual_fee-9824", "source_row": 9824, "intent": "check_card_annual_fee", "category": "CARD", "input": "i have to check the fucking card annual fee where can i do it"}
+{"id": "check_card_annual_fee-9747", "source_row": 9747, "intent": "check_card_annual_fee", "category": "CARD", "input": "I need to see the card annual fees, where can I do it?"}
+{"id": "check_card_annual_fee-9755", "source_row": 9755, "intent": "check_card_annual_fee", "category": "CARD", "input": "i cant find my fucking card annuals fes can ya see them"}
+{"id": "check_card_annual_fee-9018", "source_row": 9018, "intent": "check_card_annual_fee", "category": "CARD", "input": "I want to know more about the credit card annual fees, will you give me some information?"}
+{"id": "check_card_annual_fee-9195", "source_row": 9195, "intent": "check_card_annual_fee", "category": "CARD", "input": "i cannot find my fucking card annuals fees  help me to see them"}
+{"id": "check_current_balance_on_card-10231", "source_row": 10231, "intent": "check_current_balance_on_card", "category": "CARD", "input": "i got to see the fucking current balanceon my cards"}
+{"id": "check_current_balance_on_card-10024", "source_row": 10024, "intent": "check_current_balance_on_card", "category": "CARD", "input": "I have to see the current balance on my credot cards, could I get some help?"}
+{"id": "check_current_balance_on_card-10173", "source_row": 10173, "intent": "check_current_balance_on_card", "category": "CARD", "input": "I am looking for information about the current balance on my cards, how can I find it?"}
+{"id": "check_current_balance_on_card-10892", "source_row": 10892, "intent": "check_current_balance_on_card", "category": "CARD", "input": "I would like to know about the fucking current balance on my credit card, could you give me some information?"}
+{"id": "check_current_balance_on_card-10922", "source_row": 10922, "intent": "check_current_balance_on_card", "category": "CARD", "input": "I'm looking for information about the ucrrent balance on my credit cards could i get some help"}
+{"id": "check_current_balance_on_card-10537", "source_row": 10537, "intent": "check_current_balance_on_card", "category": "CARD", "input": "id like to see the fucking current balance on my credit cards how cah i do it"}
+{"id": "check_current_balance_on_card-10854", "source_row": 10854, "intent": "check_current_balance_on_card", "category": "CARD", "input": "I'd like to check the fucking current balance on my cards could uhelp me"}
+{"id": "check_current_balance_on_card-10692", "source_row": 10692, "intent": "check_current_balance_on_card", "category": "CARD", "input": "wanna see the current balance on my cards where could i do it"}
+{"id": "check_fees-11855", "source_row": 11855, "intent": "check_fees", "category": "FEES", "input": "i cannot find my acclunt fees could ya help me see them"}
+{"id": "check_fees-11886", "source_row": 11886, "intent": "check_fees", "category": "FEES", "input": "i cant find my account fee could ya help me checking it"}
+{"id": "check_fees-11608", "source_row": 11608, "intent": "check_fees", "category": "FEES", "input": "are there any fucking fee for my account"}
+{"id": "check_fees-11419", "source_row": 11419, "intent": "check_fees", "category": "FEES", "input": "I have to see my account fees, how do I do it?"}
+{"id": "check_fees-11096", "source_row": 11096, "intent": "check_fees", "category": "FEES", "input": "I wat to know about my account fees, give me some information"}
+{"id": "check_fees-11221", "source_row": 11221, "intent": "check_fees", "category": "FEES", "input": "I'd like to know about my fees,can you find some information?"}
+{"id": "check_fees-11092", "source_row": 11092, "intent": "check_fees", "category": "FEES", "input": "im looking for information about my feea will ya help me"}
+{"id": "check_fees-11202", "source_row": 11202, "intent": "check_fees", "category": "FEES", "input": "I can't find my fees , I want to see them"}
+{"id": "check_loan_payments-12495", "source_row": 12495, "intent": "check_loan_payments", "category": "LOAN", "input": "I want to check the loan payment, how do I  do it?"}
+{"id": "check_loan_payments-12335", "source_row": 12335, "intent": "check_loan_payments", "category": "LOAN", "input": "id like to see the loan patments how do i do it"}
+{"id": "check_loan_payments-12816", "source_row": 12816, "intent": "check_loan_payments", "category": "LOAN", "input": "I'd like to see the loan payments, how could I do  it?"}
+{"id": "check_loan_payments-12494", "source_row": 12494, "intent": "check_loan_payments", "category": "LOAN", "input": "wanna chcek the loan payment"}
+{"id": "check_loan_payments-12305", "source_row": 12305, "intent": "check_loan_payments", "category": "LOAN", "input": "is it possible to check the loan payments"}
+{"id": "check_loan_payments-12267", "source_row": 12267, "intent": "check_loan_payments", "category": "LOAN", "input": "need to see thw loan payment where to do it"}
+{"id": "check_loan_payments-12121", "source_row": 12121, "intent": "check_loan_payments", "category": "LOAN", "input": "i have to see the loan payment can i get some hel"}
+{"id": "check_loan_payments-12038", "source_row": 12038, "intent": "check_loan_payments", "category": "LOAN", "input": "wanna check the loa payments can uhelp me"}
+{"id": "check_mortgage_payments-13767", "source_row": 13767, "intent": "check_mortgage_payments", "category": "LOAN", "input": "i got to check hte mortgage payments how to do it"}
+{"id": "check_mortgage_payments-12998", "source_row": 12998, "intent": "check_mortgage_payments", "category": "LOAN", "input": "I have to see the mortgage payment"}
+{"id": "check_mortgage_payments-13042", "source_row": 13042, "intent": "check_mortgage_payments", "category": "LOAN", "input": "I have to check the mortgage payment, where do I do it?"}
+{"id": "check_mortgage_payments-13528", "source_row": 13528, "intent": "check_mortgage_payments", "category": "LOAN", "input": "for how long do i have to pay for the mortgage payments"}
+{"id": "check_mortgage_payments-13049", "source_row": 13049, "intent": "check_mortgage_payments", "category": "LOAN", "input": "i got to see the mortgage paymet could uhelp me"}
+{"id": "check_mortgage_payments-13697", "source_row": 13697, "intent": "check_mortgage_payments", "category": "LOAN", "input": "i have to check the mortgage paymenthow can i do it"}
+{"id": "check_mortgage_payments-13582", "source_row": 13582, "intent": "check_mortgage_payments", "category": "LOAN", "input": "I'd like to check the mortgage  payment can uhelp me"}
+{"id": "check_mortgage_payments-13318", "source_row": 13318, "intent": "check_mortgage_payments", "category": "LOAN", "input": "need to check the mortgage payments were can i do it"}
+{"id": "check_recent_transactions-14417", "source_row": 14417, "intent": "check_recent_transactions", "category": "ACCOUNT", "input": "I got to see recent transaction details, can you help me ?"}
+{"id": "check_recent_transactions-14133", "source_row": 14133, "intent": "check_recent_transactions", "category": "ACCOUNT", "input": "i have to see the fucking recenttransactions where can i do it"}
+{"id": "check_recent_transactions-14870", "source_row": 14870, "intent": "check_recent_transactions", "category": "ACCOUNT", "input": "I'd like to check thee current balance of my bank account, will you help me?"}
+{"id": "check_recent_transactions-14442", "source_row": 14442, "intent": "check_recent_transactions", "category": "ACCOUNT", "input": "id like to know about my  fucking recent transaction details how could i get more information"}
+{"id": "check_recent_transactions-14757", "source_row": 14757, "intent": "check_recent_transactions", "category": "ACCOUNT", "input": "I'm looking for information about my recent transaction detaild how could i get it"}
+{"id": "check_recent_transactions-14841", "source_row": 14841, "intent": "check_recent_transactions", "category": "ACCOUNT", "input": "I need to check the fucking recent transaction details, can I get some help?"}
+{"id": "check_recent_transactions-13887", "source_row": 13887, "intent": "check_recent_transactions", "category": "ACCOUNT", "input": "i got to see the fucking recent transactio details how could i do it"}
+{"id": "check_recent_transactions-14572", "source_row": 14572, "intent": "check_recent_transactions", "category": "ACCOUNT", "input": "need to check the <fucking> current balance of my account will uhelp me"}
+{"id": "close_account-15643", "source_row": 15643, "intent": "close_account", "category": "ACCOUNT", "input": "I don't want to keep my online account, I need assistance  canceling it"}
+{"id": "close_account-15148", "source_row": 15148, "intent": "close_account", "category": "ACCOUNT", "input": "I'd like to cancel a fucking profile, can you help me ?"}
+{"id": "close_account-15662", "source_row": 15662, "intent": "close_account", "category": "ACCOUNT", "input": "I don't want to keep my acciunt, can you help me to cancel it?"}
+{"id": "close_account-15531", "source_row": 15531, "intent": "close_account", "category": "ACCOUNT", "input": "i do not wanna keep my fucking online account help me canceloing it"}
+{"id": "close_account-15223", "source_row": 15223, "intent": "close_account", "category": "ACCOUNT", "input": "i dont wanna keep my fuking user account cancel it"}
+{"id": "close_account-14989", "source_row": 14989, "intent": "close_account", "category": "ACCOUNT", "input": "I would like to cancel an account, how can I do it?"}
+{"id": "close_account-15175", "source_row": 15175, "intent": "close_account", "category": "ACCOUNT", "input": "need to close a fucking online account can uhelp me"}
+{"id": "close_account-15320", "source_row": 15320, "intent": "close_account", "category": "ACCOUNT", "input": "id like to cancel a profile help me"}
+{"id": "create_account-16770", "source_row": 16770, "intent": "create_account", "category": "ACCOUNT", "input": "need to create an onbline account where can i do it"}
+{"id": "create_account-16610", "source_row": 16610, "intent": "create_account", "category": "ACCOUNT", "input": "I'd like to open a fucking online account i need assistance"}
+{"id": "create_account-16143", "source_row": 16143, "intent": "create_account", "category": "ACCOUNT", "input": "I need to create a fucking user account, could you help me?"}
+{"id": "create_account-16869", "source_row": 16869, "intent": "create_account", "category": "ACCOUNT", "input": "I want to register a user account, will yyou help me?"}
+{"id": "create_account-16386", "source_row": 16386, "intent": "create_account", "category": "ACCOUNT", "input": "i got to create a fuking profile how to do it"}
+{"id": "create_account-16654", "source_row": 16654, "intent": "create_account", "category": "ACCOUNT", "input": "i want awsistance to open a profile"}
+{"id": "create_account-16056", "source_row": 16056, "intent": "create_account", "category": "ACCOUNT", "input": "i dont have a fucking online account can uhelp me to create it"}
+{"id": "create_account-16393", "source_row": 16393, "intent": "create_account", "category": "ACCOUNT", "input": "I would like to registe a fucking account, can I get some help?"}
+{"id": "customer_service-17731", "source_row": 17731, "intent": "customer_service", "category": "CONTACT", "input": "I have to contact fucking client service, where do I do iut?"}
+{"id": "customer_service-17524", "source_row": 17524, "intent": "customer_service", "category": "CONTACT", "input": "I'd like to call customer service where could i do it"}
+{"id": "customer_service-17389", "source_row": 17389, "intent": "customer_service", "category": "CONTACT", "input": "I want help calling customer support"}
+{"id": "customer_service-17493", "source_row": 17493, "intent": "customer_service", "category": "CONTACT", "input": "I want to speak with customer suport, can you help me?"}
+{"id": "customer_service-17073", "source_row": 17073, "intent": "customer_service", "category": "CONTACT", "input": "i have to send an emial to customer support help me"}
+{"id": "customer_service-17026", "source_row": 17026, "intent": "customer_service", "category": "CONTACT", "input": "I need to contact fucking customer support, where do I d it?"}
+{"id": "customer_service-17252", "source_row": 17252, "intent": "customer_service", "category": "CONTACT", "input": "I want to contact fucking client service, I need help"}
+{"id": "customer_service-17650", "source_row": 17650, "intent": "customer_service", "category": "CONTACT", "input": "i have to send an email to client service oculd uhelp me"}
+{"id": "dispute_ATM_withdrawal-18411", "source_row": 18411, "intent": "dispute_ATM_withdrawal", "category": "ATM", "input": "I need to dispute an ATM withdrawal, could you help me ?"}
+{"id": "dispute_ATM_withdrawal-18808", "source_row": 18808, "intent": "dispute_ATM_withdrawal", "category": "ATM", "input": "id like to dispute a withdrawal how could i do it"}
+{"id": "dispute_ATM_withdrawal-17868", "source_row": 17868, "intent": "dispute_ATM_withdrawal", "category": "ATM", "input": "I got to dispute an ATM withdrawal, could you help me?"}
+{"id": "dispute_ATM_withdrawal-18481", "source_row": 18481, "intent": "dispute_ATM_withdrawal", "category": "ATM", "input": "there is a withdrawal  I didn't make, will you help me?"}
+{"id": "dispute_ATM_withdrawal-18199", "source_row": 18199, "intent": "dispute_ATM_withdrawal", "category": "ATM", "input": "I'd like t dispute an ATM transaction, where can I do it?"}
+{"id": "dispute_ATM_withdrawal-18368", "source_row": 18368, "intent": "dispute_ATM_withdrawal", "category": "ATM", "input": "I don't recognise an ATM withdrawal, could I get some help?"}
+{"id": "dispute_ATM_withdrawal-17887", "source_row": 17887, "intent": "dispute_ATM_withdrawal", "category": "ATM", "input": "wanna dispute na atm transaction could i get some help"}
+{"id": "dispute_ATM_withdrawal-17982", "source_row": 17982, "intent": "dispute_ATM_withdrawal", "category": "ATM", "input": "I don't recognise an ATM withdrawal , what do I have to do?"}
+{"id": "find_ATM-19171", "source_row": 19171, "intent": "find_ATM", "category": "FIND", "input": "wanna find the nearest atm i need hlp"}
+{"id": "find_ATM-19102", "source_row": 19102, "intent": "find_ATM", "category": "FIND", "input": "id like to know about the closest atm where can  i get more information"}
+{"id": "find_ATM-18916", "source_row": 18916, "intent": "find_ATM", "category": "FIND", "input": "I'd like to search for an ATM nearby, how to do it?"}
+{"id": "find_ATM-19103", "source_row": 19103, "intent": "find_ATM", "category": "FIND", "input": "i need cash hw to search for an atm near"}
+{"id": "find_ATM-19437", "source_row": 19437, "intent": "find_ATM", "category": "FIND", "input": "I need some cash , I got to find an ATM near me"}
+{"id": "find_ATM-19826", "source_row": 19826, "intent": "find_ATM", "category": "FIND", "input": "I'd lie to find an ATM near"}
+{"id": "find_ATM-18937", "source_row": 18937, "intent": "find_ATM", "category": "FIND", "input": "i need cash where could i search for an atm in my area"}
+{"id": "find_ATM-18944", "source_row": 18944, "intent": "find_ATM", "category": "FIND", "input": "im looking for information about the closest atm could i get somehelp"}
+{"id": "find_branch-20400", "source_row": 20400, "intent": "find_branch", "category": "FIND", "input": "I'd like information about a branch near me, where could I find it?"}
+{"id": "find_branch-20639", "source_row": 20639, "intent": "find_branch", "category": "FIND", "input": "can you give me information about a branch nearby ?"}
+{"id": "find_branch-19983", "source_row": 19983, "intent": "find_branch", "category": "FIND", "input": "i need infrmation about a branch where can i find it"}
+{"id": "find_branch-19986", "source_row": 19986, "intent": "find_branch", "category": "FIND", "input": "i need some cash id like to find a branch in my aqrea"}
+{"id": "find_branch-20530", "source_row": 20530, "intent": "find_branch", "category": "FIND", "input": "id like to search for the closest branch"}
+{"id": "find_branch-20341", "source_row": 20341, "intent": "find_branch", "category": "FIND", "input": "I want to search for an branch nearby, can you help me?"}
+{"id": "find_branch-20824", "source_row": 20824, "intent": "find_branch", "category": "FIND", "input": "I have to find the nearest branch , how could I do it?"}
+{"id": "find_branch-20417", "source_row": 20417, "intent": "find_branch", "category": "FIND", "input": "i need some cash could uhelp me to find a branc in my area"}
+{"id": "get_password-21071", "source_row": 21071, "intent": "get_password", "category": "PASSWORD", "input": "I would like to get a password, can I get some help ?"}
+{"id": "get_password-21407", "source_row": 21407, "intent": "get_password", "category": "PASSWORD", "input": "i want help to get an password"}
+{"id": "get_password-21628", "source_row": 21628, "intent": "get_password", "category": "PASSWORD", "input": "I need help to get a password"}
+{"id": "get_password-21602", "source_row": 21602, "intent": "get_password", "category": "PASSWORD", "input": "I'd like to get a pasword, how to do it?"}
+{"id": "get_password-21561", "source_row": 21561, "intent": "get_password", "category": "PASSWORD", "input": "I don't have a password, could you help me getting it?"}
+{"id": "get_password-21060", "source_row": 21060, "intent": "get_password", "category": "PASSWORD", "input": "need to get a password can ya help em"}
+{"id": "get_password-21585", "source_row": 21585, "intent": "get_password", "category": "PASSWORD", "input": "I gotto get a password, help me"}
+{"id": "get_password-21174", "source_row": 21174, "intent": "get_password", "category": "PASSWORD", "input": "i dont have a password i needassistance to get it"}
+{"id": "human_agent-22575", "source_row": 22575, "intent": "human_agent", "category": "CONTACT", "input": "i do not understand ya i need help spraking with a fucking operator"}
+{"id": "human_agent-22183", "source_row": 22183, "intent": "human_agent", "category": "CONTACT", "input": "i dont understand ya i wanna talk to a person"}
+{"id": "human_agent-22116", "source_row": 22116, "intent": "human_agent", "category": "CONTACT", "input": "could I speak with ahuman?"}
+{"id": "human_agent-21777", "source_row": 21777, "intent": "human_agent", "category": "CONTACT", "input": "i dont understaqnd ucan i speak with a fucking human agent"}
+{"id": "human_agent-21907", "source_row": 21907, "intent": "human_agent", "category": "CONTACT", "input": "i need assistance to talk to a fucking person"}
+{"id": "human_agent-21884", "source_row": 21884, "intent": "human_agent", "category": "CONTACT", "input": "I'd like to speak with a fucking operator how to doit"}
+{"id": "human_agent-21719", "source_row": 21719, "intent": "human_agent", "category": "CONTACT", "input": "wanna talk to fucking somebody how to do it"}
+{"id": "human_agent-22000", "source_row": 22000, "intent": "human_agent", "category": "CONTACT", "input": "I don't understand you, I want assistance talking to fucking somebody"}
+{"id": "make_transfer-22660", "source_row": 22660, "intent": "make_transfer", "category": "TRANSFER", "input": "wanna send money to someone online is it poossible to perform a transfer to someone"}
+{"id": "make_transfer-22725", "source_row": 22725, "intent": "make_transfer", "category": "TRANSFER", "input": "need to pay to a frien online help me perform a bank transfer to someone"}
+{"id": "make_transfer-23377", "source_row": 23377, "intent": "make_transfer", "category": "TRANSFER", "input": "I want to send money to someone online, help me to perform a bank transfer"}
+{"id": "make_transfer-23299", "source_row": 23299, "intent": "make_transfer", "category": "TRANSFER", "input": "wanna send money to someone onlineid like to make a transfer"}
+{"id": "make_transfer-22713", "source_row": 22713, "intent": "make_transfer", "category": "TRANSFER", "input": "wanna pay the rent online can ya help me performing a bank transfer to sopmeone"}
+{"id": "make_transfer-22887", "source_row": 22887, "intent": "make_transfer", "category": "TRANSFER", "input": "need to pay to a friend how could i make a bank tranfer to someone"}
+{"id": "make_transfer-22722", "source_row": 22722, "intent": "make_transfer", "category": "TRANSFER", "input": "need to pay to a friend online id like to perform a transfer"}
+{"id": "make_transfer-23580", "source_row": 23580, "intent": "make_transfer", "category": "TRANSFER", "input": "I want to pay the rent, I want help performing a  bank transfer"}
+{"id": "recover_swallowed_card-23893", "source_row": 23893, "intent": "recover_swallowed_card", "category": "ATM", "input": "the ATM swallowed my Visa, will you help me to get back it?"}
+{"id": "recover_swallowed_card-23935", "source_row": 23935, "intent": "recover_swallowed_card", "category": "ATM", "input": "the atm swallowed my amex i need help reocvering it"}
+{"id": "recover_swallowed_card-24335", "source_row": 24335, "intent": "recover_swallowed_card", "category": "ATM", "input": "the atm swallowed my amex can ya help me to retrieve it"}
+{"id": "recover_swallowed_card-24147", "source_row": 24147, "intent": "recover_swallowed_card", "category": "ATM", "input": "the atm swallowed my visa could ya help me to retrieve it"}
+{"id": "recover_swallowed_card-23869", "source_row": 23869, "intent": "recover_swallowed_card", "category": "ATM", "input": "I'd like to recover  a swallowed card by an atm i need assistance"}
+{"id": "recover_swallowed_card-24202", "source_row": 24202, "intent": "recover_swallowed_card", "category": "ATM", "input": "the ATM did not return my Master Card, could you help me recovering it ?"}
+{"id": "recover_swallowed_card-23785", "source_row": 23785, "intent": "recover_swallowed_card", "category": "ATM", "input": "I want to retrieve a credit card, how could I do it?"}
+{"id": "recover_swallowed_card-24390", "source_row": 24390, "intent": "recover_swallowed_card", "category": "ATM", "input": "I want to recover a Master Card, I need assistance"}
+{"id": "set_up_password-25470", "source_row": 25470, "intent": "set_up_password", "category": "PASSWORD", "input": "wanna set up an password where could i do it"}
+{"id": "set_up_password-25060", "source_row": 25060, "intent": "set_up_password", "category": "PASSWORD", "input": "I need a password, could you help me stting up it?"}
+{"id": "set_up_password-24838", "source_row": 24838, "intent": "set_up_password", "category": "PASSWORD", "input": "how to set up a password?"}
+{"id": "set_up_password-24740", "source_row": 24740, "intent": "set_up_password", "category": "PASSWORD", "input": "how do i set up a password"}
+{"id": "set_up_password-24743", "source_row": 24743, "intent": "set_up_password", "category": "PASSWORD", "input": "I'd like to set up an password help me"}
+{"id": "set_up_password-25318", "source_row": 25318, "intent": "set_up_password", "category": "PASSWORD", "input": "could you help me set up a password?"}
+{"id": "set_up_password-25085", "source_row": 25085, "intent": "set_up_password", "category": "PASSWORD", "input": "I'm trying to find  a password i need assistance"}
+{"id": "set_up_password-25006", "source_row": 25006, "intent": "set_up_password", "category": "PASSWORD", "input": "I'd like  to set up a password, help me"}
