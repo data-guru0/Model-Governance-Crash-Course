@@ -2,7 +2,7 @@
 # Source code is bind-mounted at /workspace by docker-compose, so edits need no rebuild.
 FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1 PYTHONPATH=/workspace DEEPEVAL_TELEMETRY_OPT_OUT=YES \
-    DEEPEVAL_RESULTS_FOLDER=/tmp/deepeval MLFLOW_ENABLE_ASYNC_LOGGING=false
+    DEEPEVAL_RESULTS_FOLDER=/tmp/deepeval MLFLOW_ENABLE_ASYNC_LOGGING=false GIT_PYTHON_REFRESH=quiet
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 WORKDIR /workspace

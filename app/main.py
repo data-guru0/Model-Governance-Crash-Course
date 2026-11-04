@@ -54,7 +54,8 @@ def health() -> dict:
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest, background: BackgroundTasks) -> ChatResponse:
     request_id = str(uuid.uuid4())
-    stage = core.lifecycle()["stage"]
+    # The traffic window (e.g. "canary-1730745600") tags this request so gates measure one window only.
+    stage = core.lifecycle().get("window", "not_initialised")
     route = core.policy()["registry"]["production_route"]
     metadata = {"tags": ["nova-assist", f"stage:{stage}"],
                 "spend_logs_metadata": {"request_id": request_id, "stage": stage, "intent": req.intent}}
