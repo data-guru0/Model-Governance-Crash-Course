@@ -3,10 +3,10 @@
 | | |
 |---|---|
 | **Source** | [bitext/Bitext-retail-banking-llm-chatbot-training-dataset](https://huggingface.co/datasets/bitext/Bitext-retail-banking-llm-chatbot-training-dataset) |
-| **Revision** | `3e3621092fc6baaf7f53ceb6f091c60ae99acb67` (pinned in `build_datasets.py`) |
+| **Revision** | `3e3621092fc6baaf7f53ceb6f091c60ae99acb67` (pinned) |
 | **Licence** | CDLA-Sharing-1.0 (redistribution allowed; derived data stays under the same licence; attribution to Bitext) |
 | **Source size** | 25,545 rows, 26 intents, 9 categories (CARD, LOAN, ACCOUNT, FIND, CONTACT, TRANSFER, ATM, PASSWORD, FEES) |
-| **Build** | `python data/build_datasets.py`, seed 42, deterministic |
+| **How the sets were built** | From the CSV at that revision, grouped by intent, sampled with `random.Random(42)`: 5 golden + 8 replay rows per intent, disjoint. The files are committed, so nothing needs rebuilding |
 
 We use the Bitext **retail-banking** set rather than the generic customer-support set. Both come from the same publisher under the same licence, and this one matches NovaBank's domain (cards, loans, transfers, ATMs, passwords, fees).
 

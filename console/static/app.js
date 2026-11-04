@@ -828,14 +828,11 @@ PAGES.policy = {
 
 PAGES.check = {
   render: () => `${head({ eyebrow: "Before class", title: "System check" })}
-    <div class="notice info" style="margin-bottom:16px">${I.info}<div>Everything after the first <code>docker compose up</code> happens in this console. Use this page before class to prove the whole stack works: services, the test suite, and a full automatic rehearsal of the story.</div></div>
-    <div class="grid g2">
+    <div class="notice info" style="margin-bottom:16px">${I.info}<div>Everything after the first <code>docker compose up</code> happens in this console. Use this page before class to prove the whole stack works: services, every model route, and a full automatic rehearsal of the story.</div></div>
+    <div class="grid">
       <section class="card"><div class="card-title">${I.pulse}Services</div><div id="ck-health" class="grid g2" style="gap:10px"></div>
         <hr class="sep"><div class="row between"><div class="muted small">One tiny real call per model (4 Groq calls).</div><button class="btn" data-act="liveCheck">${I.play}Live check</button></div>
         <div id="ov-live" style="margin-top:12px"></div></section>
-      <section class="card"><div class="card-title">${I.shield}Integration tests<span class="sub">about 10 s · 1 real Groq call</span></div>
-        <p class="muted" style="margin-top:-6px">Gateway routes, key restrictions, registry aliases, gate logic, the append-only audit log, rollback, simulation labelling and every console API. Safe to run at any time.</p>
-        <button class="btn primary" data-act="selftest">${I.play}Run the integration tests</button><div id="ck-tests" style="margin-top:12px"></div></section>
     </div>
     <section class="card"><div class="card-title">${I.book}Rehearse the whole story<span class="sub">about 3 min · ~11 real Groq calls</span></div>
       <p class="muted" style="margin-top:-6px">Plays every chapter automatically with the same governed actions as the buttons: proposal, three-way exam, registration, shadow week, canary week, the rollback demo, the three rollout weeks, promotion, report and drift check. Each chapter is checked and timed. <b>It replaces the current lesson state</b>, so run it before class, not during.</p>
@@ -915,13 +912,6 @@ const A = {
     $("#s0-preason").value = ""; memo.promptLoaded = false; toast(`New prompt version registered: ${esc(r.uri)}`);
   },
   async promptSync() { const r = await post("/api/prompt/sync"); toast(`Prompt registered: ${esc(r.uri)}`); },
-  async selftest() {
-    region("ck-tests", `<div class="notice info">${I.pulse}<div>Running the test suite…</div></div>`);
-    const r = await post("/api/selftest");
-    region("ck-tests", `${gateBanner(r.ok, "Integration tests", esc(r.summary))}
-      <div class="table-wrap"><table><tbody>${r.tests.map((t) => `<tr><td>${t.result === "PASSED" ? pill(true) : t.result === "SKIPPED" ? '<span class="pill neutral">skipped</span>' : pill(false)}</td><td class="mono small">${esc(t.test)}</td></tr>`).join("")}</tbody></table></div>
-      ${r.ok ? "" : `<details class="disclose" style="margin-top:10px"><summary>Output</summary><div><pre class="yaml">${esc(r.output)}</pre></div></details>`}`);
-  },
   async rehearse() {
     if (!$("#ck-confirm").checked) throw new Error("Tick the confirmation box first.");
     await post("/api/jobs", { kind: "rehearsal", params: { rollback_demo: $("#ck-rb").checked, reset_after: $("#ck-reset").checked } });

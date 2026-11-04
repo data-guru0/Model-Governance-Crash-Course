@@ -1,62 +1,67 @@
 # Model Governance Crash Course: NovaBank "Nova Assist"
 
-A complete, runnable mini project for teaching **model governance**: how a company decides which model goes to production, proves it is good enough, rolls it out with control and keeps an audit trail.
+A complete, runnable mini project for teaching **model governance**: how a company decides which AI model goes to production, proves it is good enough, rolls it out with control and keeps an audit trail.
 
-**Story.** NovaBank, a fictional digital bank, runs an LLM support assistant, *Nova Assist*. **Nova (v1)** is live. The product team proposes **two candidates**: **Atlas (v2)**, a bigger model, and **Sentinel (v3)**, a safety-tuned one. The governance board says: *"Prove it, roll it out safely, and keep an audit trail."* Over a seven-week story calendar, students follow the change through a proposal, an exam (Atlas passes, Sentinel is rejected), a shadow week, a canary week and a weekly rollout (25% → 50% → 100%), ending in promotion or rollback. The console is the practical side (story, buttons, live architecture diagram, evidence); **DEMO.md holds all the theory** and the instructor script.
+**The story.** NovaBank, a fictional digital bank, runs a customer-support chatbot, *Nova Assist*. **Nova (v1)** is live. The product team proposes **two candidates**: **Atlas (v2)**, a bigger model, and **Sentinel (v3)**, a safety-tuned one. The governance board says: *"Prove it, roll it out safely, and keep an audit trail."* Over a seven-week story the change goes through a proposal, an exam (Atlas passes, Sentinel is rejected), a shadow week, a canary week and a weekly rollout (25% → 50% → 100%), ending in promotion or rollback.
 
-**Classroom simulation mode (default).** The whole lesson makes only about **11 real Groq calls**. One or two per stage really go through the gateway, are really mirrored, routed and judged, and prove the plumbing works. The production-sized bulk (thousands of requests and evaluations) comes from `governance/simulate.py`, generated from synthetic model profiles in `governance/policy.yaml`. **Every simulated record is labelled** (`simulated = true`, `source: simulated`, a console banner), and the simulator never writes into LiteLLM's or MLflow's own tables. The gates, routing, registry, rollback, approvals and audit trail are the real production machinery. Set `simulation.enabled: false` to run everything for real. DEMO.md → *Real calls vs simulated data* has the per-stage breakdown.
+- **The console** (a web app) is the practical side: each chapter of the story is a page with buttons, a live architecture diagram and the evidence. **After setup, everything happens in the browser.**
+- **[DEMO.md](DEMO.md)** is the instructor guide: simple theory plus step-by-step *do this → what happens → why* for every chapter.
 
-> ## Honesty note: what is native and what we built
-> | Need | How it is done | Native? |
-> |---|---|---|
-> | Traffic split (canary/rollout) | LiteLLM router `weight` on deployments of the `nova-assist` route, changed at runtime through LiteLLM's model-management API (`/model/new`, `/model/delete`, `store_model_in_db`) | **Native.** Models defined in `litellm_config.yaml` cannot be edited at runtime, so the governed production route lives in the LiteLLM DB. The console is the only thing that edits it. |
-> | Shadow traffic mirroring | LiteLLM `silent_model` on the champion deployment | **Native.** LiteLLM does not retry or log silent calls that fail (e.g. on 429), so replay is paced (`replay.requests_per_minute`) and missing mirrors count as challenger errors. We add pairing and judging: the worker matches each mirrored call in `LiteLLM_SpendLogs` to the customer's request by our `request_id` (which LiteLLM copies into `spend_logs_metadata`). The `is_silent_experiment` flag needs LiteLLM ≥ 1.109, and we pin the latest stable 1.108.0, so the worker does not rely on it. |
-> | Fallbacks, retries, virtual keys with model allow-lists, RPM limits and budgets, spend and request logging to Postgres | LiteLLM open-source proxy | **Native** |
-> | Model registry, aliases, Prompt Registry, runs, datasets, tables | MLflow 3.18 | **Native** |
-> | Evaluation metrics (relevancy, G-Eval, toxicity, bias) | DeepEval 4.3.3 with a small custom-model adapter (`GatewayJudge`) so the judge is called through our gateway | **Native metrics.** We wrote the adapter, because DeepEval's `LiteLLMModel` would need a second copy of the LiteLLM SDK in the image. |
-> | Production-sized traffic and evaluation volume in class | `governance/simulate.py`, a seeded simulator using invented model profiles; every row labelled simulated | **Built. Simulated by design**, to save LLM quota. Not evidence about the real models. |
-| Gates, automatic rollback, append-only hash-chained audit log, governance report, approvals by role | Our own code: `governance/`, `shadow/worker.py`, `postgres/init.sql` | **Built.** No tool offers these. |
->
-> **LiteLLM enterprise features deliberately avoided:** SSO for the admin UI, enterprise audit logs, team-based logging callbacks, guardrails, secret-manager integrations, tag-based budgets. This project uses only the open-source proxy. Our audit trail is our own Postgres table.
->
-> **Identity is self-declared** in the console (name + role picker). A real deployment would put the console behind SSO. The role checks themselves are enforced from `governance/policy.yaml → approvals`.
+## Setup (the only terminal commands)
 
-## Quick start (3 commands)
-
-Prerequisites: **Docker Desktop** (give it ≥ 6 GB RAM), a free **Groq API key** from <https://console.groq.com/keys>, and about 6 GB of disk for images.
+**You need:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) running (give it at least 6 GB RAM, about 6 GB free disk) and a free **Groq API key** from <https://console.groq.com/keys>.
 
 ```bash
-git clone <this repo> model-governance-crash-course && cd model-governance-crash-course
-cp .env.example .env          # then open .env and paste your key after GROQ_API_KEY=
-docker compose up -d --build  # first build takes ~5-10 minutes
+git clone <your-repo-url> model-governance && cd model-governance
+cp .env.example .env            # open .env and paste your key after GROQ_API_KEY=
+docker compose up -d --build    # first build takes about 5-10 minutes
 ```
 
-Then open the console at **<http://localhost:8501>**. Stage 0 bootstraps itself in about a minute after start: virtual keys, the prompt registered in MLflow, v1 registered as `@champion`, and 100% of traffic on v1. Everything else is done with buttons.
+Wait about a minute after the containers start (the worker sets up Week 0 by itself), then open **<http://localhost:8501>**.
+
+**Check it works:** in the console, open **System check**:
+1. All four services show *Healthy*.
+2. **Live check** makes one tiny real call to each model and shows OK.
+3. **Rehearse the whole story** plays all seven weeks automatically (about 2 minutes, about 11 real Groq calls), shows OK for every chapter, and resets to Week 0.
+
+Then follow [DEMO.md](DEMO.md).
 
 ## The UIs
 
 | UI | URL | Login |
 |---|---|---|
-| **Governance console** (drive the lesson here) | <http://localhost:8501> | none (pick a name + role in the top bar) |
+| **Governance console** (teach from here) | <http://localhost:8501> | none: pick a name and role in the top bar |
 | MLflow (runs, Model Registry, Prompt Registry) | <http://localhost:5000> | none |
-| LiteLLM admin UI (routes, keys, spend logs) | <http://localhost:4000/ui> | user `admin`, password = `LITELLM_MASTER_KEY` from `.env` (default `sk-nova-master-local`) |
+| LiteLLM admin (routes, keys, spend logs) | <http://localhost:4000/ui> | user `admin`, password = `LITELLM_MASTER_KEY` in `.env` (default `sk-nova-master-local`) |
 | Nova Assist API (Swagger) | <http://localhost:8000/docs> | none |
+
+## Real calls vs simulated data
+
+The console runs in **classroom simulation mode** by default (`simulation.enabled: true` in `governance/policy.yaml`):
+
+- **About 11 real Groq calls for the whole story.** One or two per chapter really go through the gateway and are really answered, mirrored, routed and judged.
+- **The bulk is simulated.** Each traffic week is 10,000 questions, and the exam has 141 of its 142 examples per model simulated. `governance/simulate.py` generates them from **invented teaching profiles**, so they are not measurements of the real models.
+- **The machinery is real:** gateway weights and mirroring, model registry and aliases, gates, approvals, human review, automatic rollback, the hash-chained audit log and the report.
+- **Every simulated record is labelled** (`simulated = true`, `source: simulated`, a console badge) and never enters LiteLLM's or MLflow's own records.
+
+Set `simulation.enabled: false` (on the console's **Governance policy** page) to run everything for real, and size the volumes to your quota.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    customer([Customer / replay traffic]) -->|POST /chat| app[nova-assist-app<br/>FastAPI]
-    app -->|virtual key, route nova-assist,<br/>request_id + window tags| gw[litellm-proxy<br/>router weights · fallbacks · retries<br/>virtual keys · spend logs]
-    gw -->|weight w1| v1[(Groq<br/>gpt-oss-20b<br/>v1)]
-    gw -->|weight w2| v2[(Groq<br/>gpt-oss-120b<br/>v2)]
-    gw -. silent_model mirror .-> v2
+    customer([Customers]) -->|POST /chat| app[nova-assist-app<br/>FastAPI]
+    app -->|virtual key · route nova-assist| gw[LiteLLM gateway<br/>weights · mirroring · fallbacks<br/>virtual keys · spend logs]
+    gw -->|weight| v1[(Groq · gpt-oss-20b<br/>v1 Nova)]
+    gw -->|weight| v2[(Groq · gpt-oss-120b<br/>v2 Atlas)]
+    gw -. silent copy .-> v2
+    gw -. exam only .-> v3[(Groq · gpt-oss-safeguard-20b<br/>v3 Sentinel)]
     worker[governance-worker<br/>jobs · shadow pairing · online judge<br/>auto gate + rollback] -->|route nova-judge| gw
-    gw --> judge[(Groq<br/>qwen3.8-27b<br/>judge)]
+    gw --> judge[(Groq · qwen3.8-27b<br/>judge)]
     console[governance-console<br/>FastAPI + web UI] -->|model-management API| gw
-    console --> mlflow[mlflow<br/>tracking + registry + prompts]
+    console --> mlflow[MLflow<br/>tracking · registry · prompts]
     worker --> mlflow
-    gw --> pg[(postgres<br/>litellm · mlflow · governance)]
+    gw --> pg[(Postgres<br/>litellm · mlflow · governance)]
     app --> pg
     worker --> pg
     console --> pg
@@ -65,89 +70,78 @@ flowchart LR
 
 | Service | Role |
 |---|---|
-| `postgres` | One server, three databases: `litellm` (gateway state + spend logs), `mlflow` (tracking + registry), `governance` (audit log, gate decisions, requests, shadow pairs, jobs) |
-| `litellm` | The only path to Groq. Fixed routes `nova-v1`, `nova-v2` and `nova-judge` live in `litellm_config.yaml`. The governed production route `nova-assist` lives in the DB. |
-| `mlflow` | Tracking server, Model Registry (`nova-assist` with `@champion` / `@challenger` / `@retired`) and Prompt Registry (`nova-assist-system`) |
-| `nova-assist-app` | The "production application". It only holds its own virtual key (no Groq key, no master key) and tags every request with `request_id` and the traffic window. |
-| `governance-worker` | Bootstraps Stage 0. Runs evaluation and replay jobs. Pairs and judges shadow traffic, judges sampled live answers, and re-checks the live gate every 15 s with automatic rollback. |
-| `governance-console` | The web console you teach from (FastAPI JSON API + hand-built single-page UI). One page per stage, each explaining how it works, its gate, and what is real vs simulated, plus the audit log and policy editor. Every button calls the same governed functions in `governance/lifecycle.py`. |
+| `postgres` | Three databases: `litellm` (gateway state, spend logs), `mlflow` (tracking, registry), `governance` (audit log, gate decisions, requests, shadow pairs, jobs) |
+| `litellm` | The only path to Groq. Fixed routes `nova-v1/v2/v3` and `nova-judge` are in `litellm_config.yaml`; the governed production route `nova-assist` lives in its database and is changed only by the console |
+| `mlflow` | Model Registry (`nova-assist` with `@champion` / `@challenger` / `@retired`), Prompt Registry, evaluation runs |
+| `nova-assist-app` | The "production" chatbot API. It holds only its own virtual key (no Groq key) and tags every request with an ID and the traffic window |
+| `governance-worker` | Sets up Week 0, runs jobs (exam, simulated weeks, drift, rehearsal), pairs and judges shadow traffic, and re-checks the live gate every 15 s with automatic rollback |
+| `governance-console` | The web console: one page per chapter, audit log, policy editor, system check. Every button calls the governed functions in `governance/lifecycle.py` |
 
-**Health:** every service has a Docker health check. Run `docker compose ps` (all should say `healthy` or `Up`), or open the console's **Overview** page, which shows each service's status and can make one live call per model.
+## Honesty note: what is native and what we built
+
+| Need | How | Native? |
+|---|---|---|
+| Traffic split for canary and rollout | LiteLLM router `weight` on the DB-stored `nova-assist` route, changed through its model-management API | Native |
+| Shadow mirroring | LiteLLM `silent_model`. The worker pairs each copy with the customer's request by `request_id` (copied into `spend_logs_metadata`). LiteLLM drops failed copies without logging them, so missing copies count as challenger errors | Native + our pairing |
+| Retries, fallbacks, virtual keys, budgets, spend logs | LiteLLM open-source proxy | Native |
+| Registry, aliases, Prompt Registry, runs, datasets | MLflow 3.18 | Native |
+| Evaluation metrics | DeepEval 4.3.3 with a small adapter (`GatewayJudge`) so the judge is called through our gateway | Native metrics + our adapter |
+| Classroom volumes | `governance/simulate.py`, seeded and labelled | Built (simulated by design) |
+| Gates, automatic rollback, hash-chained append-only audit log, report, role approvals, rehearsal | `governance/`, `shadow/worker.py`, `postgres/init.sql` | Built |
+
+We avoided the LiteLLM enterprise features (SSO, enterprise audit logs, guardrails, secret managers, tag budgets). Identity in the console is self-declared (name + role); a real deployment would use SSO. The role checks themselves are enforced from `policy.yaml → approvals`.
 
 ## Models
 
-Chosen after calling Groq's `/models` with the course key (November 2026). Model IDs live only in `litellm_config.yaml`.
+Model IDs are confirmed against Groq's `/models` and live only in `litellm_config.yaml`.
 
 | Role | Model | Why |
 |---|---|---|
-| Champion v1 "Nova" | `openai/gpt-oss-20b` | Small and cheap ($0.075 / $0.30 per 1M tokens in/out), fast, a plausible "first launch" model |
-| Candidate v2 "Atlas" | `openai/gpt-oss-120b` | Same family, 6× larger, 2× price: the classic "bigger must be better, prove it" proposal |
-| Candidate v3 "Sentinel" | `openai/gpt-oss-safeguard-20b` | Safety-tuned, same price as v1: the "safest must be best" proposal. Its teaching profile is over-cautious, so the exam rejects it on helpfulness and correctness |
-| Judge | `qwen/qwen3.8-27b` | A different model family from both candidates, which reduces self-preference bias. It is the only other capable chat model on the key. `reasoning_format: hidden` keeps its output to clean JSON. |
+| Champion v1 "Nova" | `openai/gpt-oss-20b` | Small, cheap, fast: a plausible first launch |
+| Candidate v2 "Atlas" | `openai/gpt-oss-120b` | Same family, 6× larger, 2× price: "bigger must be better, prove it" |
+| Candidate v3 "Sentinel" | `openai/gpt-oss-safeguard-20b` | Safety-tuned, same price as v1. Its teaching profile is over-cautious, so the exam rejects it |
+| Judge | `qwen/qwen3.8-27b` | Different model family from the candidates, which limits self-preference bias |
 
-Trade-off: the judge is a preview model on Groq and can change or disappear. If it does, change the `nova-judge` route in `litellm_config.yaml` and note that past and new scores are not comparable.
-
-## Groq free-tier limits and run times
-
-Measured from response headers for this key: **1,000 requests/day, 8,000 tokens/minute and 1,000 output tokens/minute per model** (Groq documents about 200K tokens/day). The judge is the bottleneck. How the project fits inside the limits:
-- Gateway retries with `retry_after`, plus client-side exponential backoff with jitter (`rate_limits` in `policy.yaml`).
-- A concurrency of 2.
-- Per-key RPM limits.
-- A small default evaluation profile (`demo`).
-- Per-example results saved to Postgres, so an interrupted evaluation resumes instead of re-spending tokens.
-
-| Chapter | Real Groq calls (measured) | Simulated | Click time |
-|---|---|---|---|
-| 0 Where we start | 1 answer | 0 | ~2 s |
-| 2 The exam (3 models) | 2 answers + 2 judge | 141 examples × 3 models | ~10 s |
-| 4 Shadow week | 2 answers (v1 + mirrored v2) + 1 judge | 10,000 questions + pairs | ~15 s |
-| 5 Canary week (+ rollback demo) | 1 answer | 20,000 | ~50 s |
-| 6 Rollout weeks 25/50/100% | 1 answer + 1 judge | 30,000 | ~40 s |
-| 7 Promotion, report, drift | 0 | 142 | ~8 s |
-| **Whole story** | **11 calls** | | **~2.5 min of clicks** |
-
-The bottleneck is the judge: Groq's free tier also caps **output tokens at 1,000 per minute** per model, which is roughly 8 judge calls per minute. With `simulation.enabled: false` everything is real and these limits matter; size volumes to your quota. Evaluation profiles for real runs, which reuse already-scored examples: `lite` (27 + 12, ~30 min per version) and `full` (130 + 12, a paid tier or multi-day resumable runs). Switch under `evaluation.profile` on the console's Policy page. DEMO.md lists what a production evaluation adds on top.
-
-## Running the tests
-
-The integration tests hit the real stack (gateway routes, key restrictions, registry aliases, gate logic, the append-only audit log, rollback, simulation labelling and every console API). **Run them from the console: System check → Run the integration tests** (about 10 s, 1 real Groq call). The same page has **Rehearse the whole story**, which plays all seven weeks automatically (about 2 min, about 11 real calls) and reports every chapter. Terminal equivalent, if you prefer:
-
-```bash
-docker compose exec governance-console pytest -q tests
-```
+**Groq free tier (measured):** 1,000 requests/day, 8,000 tokens/min, 1,000 output tokens/min and about 200,000 tokens/day per model. The simulation keeps a full lesson to about 11 calls. With simulation off, the judge is the bottleneck (about 8 calls/min). Use the `demo` evaluation profile (14 examples, about 8 min per model) or `lite`; finished examples are cached, so an interrupted exam resumes.
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---|---|
-| `port is already allocated` | Another app uses 8501, 5000, 4000 or 8000. Stop it, or change the left side of the `ports:` mapping in `docker-compose.yml`. On macOS, AirPlay Receiver uses port 5000. |
-| Console says "Stack not ready" | Wait about a minute after `up`, then check `docker compose ps`. The worker bootstraps Stage 0 once LiteLLM and MLflow are healthy. |
-| Live check shows `401` / `invalid_api_key` | `GROQ_API_KEY` in `.env` is wrong. Fix it, then run `docker compose up -d litellm` to restart the gateway with it. |
-| Evaluation job `failed` with "rate limits", or it runs slowly | Expected on the free tier. Click **Run offline evaluation** again: finished examples are reused. If you hit the daily token cap, continue the next day. |
-| Canary says "not enough data" | At 20%, about 1 in 5 replayed requests reaches v2. Send more replay traffic until there are ≥ 5 challenger requests and ≥ 4 judged samples. |
-| Start over completely | Console → **Baseline → Reset to Stage 0** restores Stage 0 and keeps the audit log. To wipe everything, including the audit log and MLflow, run `docker compose down -v` and then `docker compose up -d`. |
+| `port is already allocated` | Another app uses 8501, 5000, 4000 or 8000. Stop it, or change the left side of that `ports:` entry in `docker-compose.yml`. On macOS, AirPlay Receiver uses port 5000. |
+| Console says "Stack not reachable" | Wait a minute after `docker compose up`; the worker sets up Week 0 once LiteLLM and MLflow are healthy. `docker compose ps` shows each service's health. |
+| Live check shows `401` / `invalid_api_key` | The key in `.env` is wrong. Fix it, then run `docker compose up -d --force-recreate litellm`. |
+| Live check shows `429` / rate limit | The Groq free tier's per-minute or daily limit is reached. Wait a minute (or until the next day), or use another key. |
+| The exam job fails with a rate-limit error | Click **Run the exam** again (simulation off only: finished examples are reused). |
+| Start the story again | Console → **Chapter 0 → Reset to Week 0**. The audit log keeps everything, including the reset. |
+| Wipe everything (audit log, MLflow, keys) | `docker compose down -v`, then `docker compose up -d`. |
 
 ## Repository layout
 
 ```
-├── README.md · DEMO.md (instructor script) · docker-compose.yml · Dockerfile · .env.example
-├── litellm_config.yaml        # gateway routes, retries, fallbacks, prices
+├── README.md                  # this file: setup and overview
+├── DEMO.md                    # instructor guide: theory + step-by-step for every chapter
+├── docker-compose.yml         # the six services
+├── Dockerfile                 # image for app, worker and console
+├── .env.example               # copy to .env and add your Groq key
+├── litellm_config.yaml        # gateway routes, prices, retries, fallbacks
+├── requirements.txt
+├── app/                       # Nova Assist chatbot API + MLflow pyfunc model
+├── console/                   # governance console: server.py (API) + static/ (web UI)
+├── data/                      # golden, replay and red-team sets + dataset card
+├── evaluation/run_eval.py     # DeepEval exam suite, offline and drift gates
 ├── governance/
-│   ├── policy.yaml            # ALL gate thresholds, versioned
-│   ├── policy.md              # Nova Assist system prompt (bank policy)
-│   ├── core.py                # gateway, audit log, gates, keys (shared)
-│   ├── lifecycle.py           # every stage as a governed function
-│   └── report.py              # Stage 7 governance report
-├── proposals/                 # proposal with two candidates + a model card per candidate
-├── data/                      # golden, replay, red-team sets + dataset card + builder
-├── app/                       # Nova Assist FastAPI service + MLflow pyfunc model
-├── shadow/worker.py           # governance worker (shadow, online judge, jobs, auto-rollback)
-├── evaluation/run_eval.py     # DeepEval suite + offline and drift gates
-├── console/server.py          # governance console API (FastAPI)
-├── console/static/            # governance console web UI (HTML/CSS/JS, no build step)
-├── postgres/init.sql          # governance schema, append-only triggers
-├── reports/                   # generated governance reports
-└── tests/                     # integration tests against the real stack
+│   ├── policy.yaml            # every gate threshold, story calendar, simulation profiles
+│   ├── policy.md              # the chatbot's system prompt (bank policy)
+│   ├── core.py                # gateway, audit log, gates, keys
+│   ├── lifecycle.py           # every chapter as a governed function
+│   ├── simulate.py            # classroom simulator (labelled synthetic data)
+│   ├── rehearsal.py           # automatic end-to-end story rehearsal
+│   └── report.py              # governance report for the board
+├── postgres/init.sql          # governance schema, append-only audit triggers
+├── proposals/                 # the proposal (two candidates) + a model card per candidate
+├── reports/                   # generated reports (git-ignored)
+└── shadow/worker.py           # governance worker
 ```
 
 ## Licences

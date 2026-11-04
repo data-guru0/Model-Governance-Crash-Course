@@ -1,8 +1,28 @@
+# Secrets: never commit your Groq key. Copy .env.example to .env instead.
 .env
+.env.*
+!.env.example
+
+# Python
 __pycache__/
-*.pyc
-.deepeval/
+*.py[cod]
+.venv/
+venv/
 .pytest_cache/
-reports/*.md
-reports/*.html
+.mypy_cache/
+.ruff_cache/
+
+# Tool caches and generated output
+.deepeval/
+mlruns/
+mlartifacts/
+reports/*
 !reports/.gitkeep
+*.log
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

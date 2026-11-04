@@ -171,22 +171,6 @@ def live_check() -> list[dict]:
     return out
 
 
-@app.post("/api/selftest")
-def selftest(a: Actor) -> dict:
-    """Run the integration test suite against the live stack (about 10 s, 1 real Groq call)."""
-    import subprocess
-    import sys
-
-    r = subprocess.run([sys.executable, "-m", "pytest", "-q", "-rA", "--no-header", "-p", "no:cacheprovider", "tests"],
-                       cwd=core.ROOT, capture_output=True, text=True, timeout=600)
-    out = r.stdout + r.stderr
-    tests = [{"test": line.split("::", 1)[1].split(" ")[0], "result": line.split(" ", 1)[0]}
-             for line in out.splitlines() if line.startswith(("PASSED", "FAILED", "SKIPPED", "ERROR")) and "::" in line]
-    summary = next((l for l in reversed(out.splitlines()) if " passed" in l or " failed" in l), out[-200:])
-    core.audit(a.label, "system_check", "integration_tests", "PASS" if r.returncode == 0 else "FAIL", {"summary": summary})
-    return {"ok": r.returncode == 0, "summary": summary.strip("= "), "tests": tests, "output": out[-6000:]}
-
-
 class PromptEdit(Actor):
     text: str
     reason: str = ""

@@ -19,7 +19,7 @@ You teach model governance as **one story that unfolds over seven weeks**. NovaB
 
 | Do this | What happens | Why |
 |---|---|---|
-| `git clone <repo> && cd <repo>` | You get the project | |
+| `git clone <your-repo-url> model-governance && cd model-governance` | You get the project | |
 | `cp .env.example .env`, then paste your Groq key after `GROQ_API_KEY=` | The gateway can reach Groq | The key lives only in the gateway container, never in the app (least privilege) |
 | `docker compose up -d --build` | Six services start: Postgres, LiteLLM gateway, MLflow, Nova Assist app, governance worker, console. The worker sets up Week 0 by itself | One command, so students can reproduce it at home |
 
@@ -31,7 +31,6 @@ From here on, **you never need the terminal again**. Open <http://localhost:8501
 |---|---|---|
 | Open **System check** in the sidebar | Four service tiles show *Healthy* | Proves the stack is up |
 | Click **Live check** | One tiny real call to each of the four models (v1, v2, v3, judge), each with an OK | Proves the Groq key and every route work |
-| Click **Run the integration tests** | 10 tests run in about 10 s (routes, key restrictions, registry aliases, gate logic, append-only audit log, rollback, simulation labels, console API); each shows PASS | The same checks an engineer would run, without a terminal |
 | Tick the boxes and click **Rehearse the whole story** | The whole seven-week story plays automatically in about 2 minutes; a table shows every chapter OK, the time taken and the number of real LLM calls (about 11). It ends by resetting to Week 0 | You know the full lesson works before students arrive |
 | Open **Governance policy** | You see `policy.yaml`, where every threshold lives | Students will keep asking "where does that number come from?" |
 
