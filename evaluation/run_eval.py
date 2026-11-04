@@ -47,14 +47,19 @@ def dataset_version() -> str:
 
 
 def select_examples(profile: dict) -> tuple[list[dict], list[dict]]:
-    """Stratified pick: the first `per_slice` golden rows of every slice (file order is seeded)."""
-    golden, picked, counts = _read("golden.jsonl"), [], {}
-    for row in golden:
-        s = row[profile["slice_by"]]
-        if counts.get(s, 0) < profile["per_slice"]:
-            counts[s] = counts.get(s, 0) + 1
-            picked.append(row)
-    return picked, _read("redteam.jsonl")
+    """Stratified pick: the first `per_slice` golden rows of every slice and the first
+    `redteam_per_attack` red-team rows of every attack type (file order is seeded). A smaller
+    profile is always a subset of a larger one, so cached per-example results carry over."""
+    def first_n(rows: list[dict], key: str, n: int | None) -> list[dict]:
+        picked, counts = [], {}
+        for row in rows:
+            if n is None or counts.get(row[key], 0) < n:
+                counts[row[key]] = counts.get(row[key], 0) + 1
+                picked.append(row)
+        return picked
+
+    return (first_n(_read("golden.jsonl"), profile["slice_by"], profile["per_slice"]),
+            first_n(_read("redteam.jsonl"), "attack", profile.get("redteam_per_attack")))
 
 
 # --------------------------------------------------------------------------- metrics
@@ -73,12 +78,17 @@ class GatewayJudge(DeepEvalBaseLLM):
         return self
 
     def generate(self, prompt: str, schema=None):
-        out = core.with_backoff(lambda: core.chat(self.route, [{"role": "user", "content": prompt}], self.key,
-                                                  {"tags": ["judge", "offline-eval"]}, 0.0, 1500), "judge")
-        text = out["content"]
-        if schema is None:
-            return text
-        return schema.model_validate_json(text[text.find("{"): text.rfind("}") + 1])
+        for attempt in range(3):  # LLM judges occasionally emit malformed JSON: ask again
+            out = core.with_backoff(lambda: core.chat(self.route, [{"role": "user", "content": prompt}], self.key,
+                                                      {"tags": ["judge", "offline-eval"]}, 0.0, 1500), "judge")
+            text = out["content"]
+            if schema is None:
+                return text
+            try:
+                return schema.model_validate_json(text[text.find("{"): text.rfind("}") + 1])
+            except ValueError:
+                if attempt == 2:
+                    raise
 
     async def a_generate(self, prompt: str, schema=None):
         return self.generate(prompt, schema)
@@ -209,16 +219,19 @@ def run_evaluation(version: str, purpose: str, actor: str, job_id: int | None = 
     examples = golden + red
 
     judge_route = ev["judge_route"]
+    # Everything that changes a per-example score is in the key; the profile SIZE is not, so a
+    # demo-sized run reuses examples already scored by a bigger run (and vice versa).
     run_key = "|".join([version, core.route_params(route)["model"], dataset_version(),
-                        str(prompt.get("version")), core.route_params(judge_route)["model"], ev["profile"],
-                        hashlib.sha256(json.dumps(ev, sort_keys=True).encode()).hexdigest()[:8]])
+                        str(prompt.get("version")), core.route_params(judge_route)["model"],
+                        f"{profile['slice_by']}+toxbias:{profile['toxicity_bias_on']}",
+                        hashlib.sha256(json.dumps(ev["generation"], sort_keys=True).encode()).hexdigest()[:8]])
     if fresh:
         run_key += f"|fresh-{core.now().isoformat()}"
 
     done = {r["example_id"]: r["result"] for r in
             core.query("SELECT example_id, result FROM governance.eval_results WHERE run_key = %s", (run_key,))}
     todo = [e for e in examples if e["id"] not in done]
-    reused = len(done)
+    reused = len(examples) - len(todo)
 
     key = core.worker_key()
     metrics = build_metrics(judge_model(), core.system_prompt_text())
@@ -298,6 +311,8 @@ def offline_gate(challenger: dict, champion: dict) -> list[dict]:
         checks.append(core.check(f"no_regression.{m} (vs champion {cp[m]:.3f})", ch.get(m), rule))
     stol = ev["slice_regression_tolerance"]
     for s, d in champion["slices"].items():
+        if d["n"] < ev["slice_min_examples"]:
+            continue  # one judged example per slice is noise, not evidence (demo profile): report only
         for m in ("policy_compliance", "correctness"):
             if d.get(m) is not None:
                 checks.append(core.check(f"slice.{s}.{m} (vs champion {d[m]:.3f})",

@@ -24,7 +24,8 @@ Fields: `id`, `source_row` (row index in the source CSV), `intent`, `category`, 
 
 `governance/policy.yaml → evaluation.profile` picks how much of the golden set a run uses:
 
-- **lite** (default, sized for the Groq free tier): 3 examples per **category** = 27 examples, plus all 12 red-team cases. Slices are compared per category.
+- **demo** (default, classroom): 1 example per **category** = 9 examples, plus 1 red-team case per attack type = 5. Slices are reported but not gated, because n=1 is too noisy.
+- **lite**: 3 examples per category = 27 examples, plus all 12 red-team cases. Slices are compared per category.
 - **full**: all 130 examples, plus all red-team cases. Slices are compared per intent. Needs a paid Groq tier, or a run spread over several days (runs resume automatically).
 
 ## Known limitations

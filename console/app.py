@@ -257,13 +257,13 @@ elif page == "2 · Offline evaluation":
     ev_cfg = core.policy()["evaluation"]
     prof = ev_cfg["profiles"][ev_cfg["profile"]]
     st.markdown(f"Both versions answer the **same** golden set (profile `{ev_cfg['profile']}`: {prof['per_slice']} "
-                f"per {prof['slice_by']}) plus 12 red-team prompts; judge `{ev_cfg['judge_route']}` "
+                f"per {prof['slice_by']}) plus 1 red-team prompt per attack type; judge `{ev_cfg['judge_route']}` "
                 f"(`{core.route_params(ev_cfg['judge_route'])['model']}`) scores them with DeepEval.")
     stage = core.lifecycle()["stage"]
     if stage in ("proposal_approved", "offline_failed"):
         if st.button("Run offline evaluation (v1 and v2)", type="primary"):
             core.enqueue("offline_eval", {}, actor())
-            st.success("Queued. About 15-25 minutes on the Groq free tier; cached examples are reused.")
+            st.success("Queued. Demo profile: about 5-10 minutes on the Groq free tier (the v1 baseline is reused).")
     elif stage in ("baseline", "proposal_submitted", "proposal_rejected"):
         st.warning("The proposal must be approved first (Stage 1).")
     jobs_panel(("offline_eval",))

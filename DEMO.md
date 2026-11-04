@@ -9,8 +9,8 @@ The whole lesson follows **one change**: NovaBank wants to replace Nova Assist *
 ## Before class (do this the evening before)
 
 1. Start the stack and open the console. On the **Overview** page all four services should show *healthy*. Click **Live check**: three ✅ lines mean the Groq key works.
-2. Run Stages 1 and 2 once: submit and approve the proposal, then click **Run offline evaluation**. On the Groq free tier this takes **about 60 minutes**, because the judge model is limited to 8,000 tokens per minute. That is a lesson in itself (see Stage 2).
-3. Go to **0 · Baseline → Reset demo**. This restores Stage 0 but **keeps the cached evaluation results**: same model, same data, same judge means the same evidence. When you click *Run offline evaluation* live in class, it finishes in seconds and writes fresh MLflow runs.
+2. Leave the stack running for about 10 minutes. On first start, the worker evaluates the **v1 champion baseline** in the background (job `baseline_eval`). That is the evidence a real champion already has from its own approval, and it means the Stage 2 click in class only has to score v2.
+3. Optional dress rehearsal: run Stages 1 and 2 once, then **0 · Baseline → Reset demo**. Reset keeps the cached per-example scores (same model, data and judge means the same evidence), so the live Stage 2 click then finishes in seconds and still writes fresh MLflow runs.
 4. Keep `governance/policy.yaml` open in an editor so students can see the thresholds.
 
 > Throughout the lesson, use the sidebar to set **your name** and **role**. Approvals are refused for the wrong role. That is intentional; show it at least once.
@@ -22,7 +22,7 @@ The whole lesson follows **one change**: NovaBank wants to replace Nova Assist *
 | 0:00 | Why model governance | The story, the four frameworks, the lifecycle on one slide |
 | 0:15 | Stage 0 · Baseline | Registry, aliases, prompt registry, 100% v1 |
 | 0:30 | Stage 1 · Proposal | Proposal, model card, risk tier, approval by role |
-| 0:45 | Stage 2 · Offline evaluation | Metrics, judge, slices, PASS/FAIL gate |
+| 0:45 | Stage 2 · Offline evaluation | Metrics, judge, slices, PASS/FAIL gate (the run takes ~8 min; explain the metrics while it runs) |
 | 1:15 | Stage 3 · Register challenger | Aliases vs stages, lineage tags |
 | 1:25 | *Break* | |
 | 1:35 | Stage 4 · Shadow | Mirroring, pairwise judge, zero critical violations |
@@ -138,8 +138,8 @@ and grade them with consistent, documented metrics. Then compare against **thres
 *Why:* NIST AI RMF calls this *Measure*. EU AI Act Art. 15 asks high-risk systems for declared accuracy and robustness. In banking it is the validation step of SR 11-7.
 
 ### 2. What to show
-1. **2 · Offline evaluation.** Read the header line: profile `lite` = 3 examples per category (27) + 12 red-team prompts, judged by `qwen/qwen3.8-27b`.
-2. Click **Run offline evaluation (v1 and v2)**. The job panel updates every 5 seconds. Because you ran it before class, it reuses cached examples and finishes quickly. Point out the MLflow param `reused_cached_examples`.
+1. **2 · Offline evaluation.** Read the header line: profile `demo` = 1 golden example per category (9) + 1 red-team prompt per attack type (5), judged by `qwen/qwen3.8-27b`.
+2. Click **Run offline evaluation (v1 and v2)**. The job panel updates every 5 seconds. v1 is reused from the baseline run, so only v2 is scored: **about 5–10 minutes** on the free tier. Use the wait to explain the metrics below. Afterwards, point out the MLflow param `reused_cached_examples`.
 3. When it finishes, read the **gate banner** (PASS or FAIL) and then the metrics table, row by row:
 
 | Metric | How it is computed | How to read it |
@@ -162,7 +162,7 @@ and grade them with consistent, documented metrics. Then compare against **thres
 ### 3. Talking points and student questions
 - *"Why a different model as judge?"* Models tend to prefer their own style (self-preference bias), so we judge with another family. The judge is still an LLM: its scores are noisy, so we use thresholds with margins, compare two models under the same judge, and spot-check by reading answers.
 - *"Why is v1 evaluated too?"* The gate includes **no regression vs the champion** on safety metrics. "v2 meets the bar" is not enough if v2 is less safe than what customers have today.
-- *"Why so few examples?"* The Groq free tier gives about 8K tokens/min to the judge. That is a real constraint in companies too: evaluation has a budget. The `full` profile (130 examples) exists for a paid tier. The trade-off is statistical confidence vs cost.
+- *"Why so few examples?"* This is a classroom-sized exam. The Groq free tier gives the judge about 1,000 output tokens/min, which is roughly 8 judge calls per minute. Evaluation always has a budget in companies too; theirs is just bigger. With one example per category the per-slice numbers are shown but **not gated** (`slice_min_examples: 3`), because one example is noise, not evidence. See *Scaling this evaluation to production* below.
 - *"Who sets the thresholds?"* The model risk function, **before** looking at results. Moving a threshold after a FAIL is the classic governance smell, and here the policy fingerprint in every gate decision would show it.
 
 ### 4. What could go wrong in real life
@@ -170,6 +170,25 @@ and grade them with consistent, documented metrics. Then compare against **thres
 
 ### 5. Checkpoint question
 *"v2 has higher helpfulness but its `redteam_pass_rate` dropped from 1.00 to 0.92, with a tolerance of 0.02. What does the gate say, and why is that the right call?"* (FAIL. Safety regressions are not traded for quality.)
+
+### Scaling this evaluation to production (tell students this explicitly)
+The demo keeps the **mechanics** of a production evaluation and shrinks the **volume**. The same code supports bigger runs. Switch `evaluation.profile` on the Policy page, and already-scored examples are reused because smaller profiles are subsets of bigger ones:
+
+| Profile | Examples per version | Judge calls per version | Free-tier time per version |
+|---|---|---|---|
+| `demo` (default) | 9 golden + 5 red-team | ~70 | ~8 min |
+| `lite` | 27 golden + 12 red-team | ~200 | ~30 min |
+| `full` | 130 golden + 12 red-team, toxicity and bias on everything | ~900 | hours; paid tier, or resume across days |
+
+What a real bank would add on top (none of it changes the pipeline shape; each is an extra metric or dataset):
+- **Hundreds to thousands of golden examples** per intent, refreshed from real anonymised conversations, with **confidence intervals** on every metric and significance tests on v1 vs v2.
+- A **larger red-team suite** (hundreds of attacks, multilingual, refreshed after every incident) and automated attack generation.
+- **Several judges or a judge panel**, calibrated against human-labelled samples, with judge-agreement metrics.
+- **Human review** of a random sample and of every borderline case.
+- **Faithfulness and grounding metrics** when the assistant uses retrieval (RAG) over bank documents.
+- **Fairness slices** (for example by language or customer segment) and **accessibility / readability** checks.
+- **Robustness tests:** typos, paraphrases, long conversations, multi-turn context.
+- **Load and soak tests** of latency and cost at production volume.
 
 ---
 
@@ -321,7 +340,7 @@ With all gates passed at 100%, make it official: v2 becomes **champion**, and v1
    - every gate decision with its policy version (including the rollback incident)
    - the traffic timeline with approvals
    - the full audit trail, with the **hash chain verified INTACT**
-3. **Run drift check now** re-evaluates the champion with fresh calls and compares it with its reference evaluation (allowed drop: 0.05). On the free tier this takes about 20 minutes, so start it and come back. In production this is a scheduled job, for example nightly.
+3. **Run drift check now** re-evaluates the champion with fresh calls and compares it with its reference evaluation (allowed drop: 0.05). With the demo profile this takes about 8 minutes, so start it and then walk through the report. In production this is a scheduled job, for example nightly.
 4. **Audit log** page: click **Prove it: try to edit history**. Postgres refuses the edit because the table is append-only.
 
 ### 3. Talking points and student questions

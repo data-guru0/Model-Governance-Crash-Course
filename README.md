@@ -91,22 +91,23 @@ Trade-off: the judge is a preview model on Groq and can change or disappear. If 
 
 ## Groq free-tier limits and run times
 
-Measured from response headers for this key: **1,000 requests/day and 8,000 tokens/minute per model** (Groq documents about 200K tokens/day). The judge is the bottleneck. How the project fits inside the limits:
+Measured from response headers for this key: **1,000 requests/day, 8,000 tokens/minute and 1,000 output tokens/minute per model** (Groq documents about 200K tokens/day). The judge is the bottleneck. How the project fits inside the limits:
 - Gateway retries with `retry_after`, plus client-side exponential backoff with jitter (`rate_limits` in `policy.yaml`).
 - A concurrency of 2.
 - Per-key RPM limits.
-- A small default evaluation profile.
+- A small default evaluation profile (`demo`).
 - Per-example results saved to Postgres, so an interrupted evaluation resumes instead of re-spending tokens.
 
 | Step | Groq calls (approx.) | Time on the free tier |
 |---|---|---|
-| Stage 2 offline eval, `lite` profile (27 golden + 12 red-team, both versions) | ~80 answers + ~450 judge calls | 35–45 min. **Run it before class.** Re-runs reuse cached examples and finish in seconds. |
+| Champion baseline (runs automatically at first start) | 14 answers + ~70 judge calls | ~8 min, in the background |
+| Stage 2 offline eval, `demo` profile (9 golden + 5 red-team per version; v1 reused from baseline) | 14 answers + ~70 judge calls | **~5–10 min** |
 | Stage 4 shadow (45 requests) | 45 v1 + 45 v2 + 45 judge | ~3 min |
 | Stage 5 canary (120 requests at 10%) | 120 answers + ~25 judge | ~5 min |
 | Stage 6 rollout (25/50/100%) | ~80 answers + ~60 judge | ~6 min |
-| Drift check | same as one version of Stage 2, fresh calls | ~20 min |
+| Drift check | same as one version of Stage 2, fresh calls | ~8 min |
 
-The `full` profile (130 golden examples) needs about 5× the judge tokens, which means a paid tier or a run spread over several days. Switch profiles under `evaluation.profile` on the console's Policy page.
+The bottleneck is the judge: Groq's free tier also caps **output tokens at 1,000 per minute** per model, which is roughly 8 judge calls per minute. Bigger profiles exist and reuse already-scored examples: `lite` (27 + 12, ~30 min per version) and `full` (130 + 12, a paid tier or multi-day resumable runs). Switch under `evaluation.profile` on the console's Policy page. DEMO.md lists what a production evaluation adds on top.
 
 ## Running the tests
 
