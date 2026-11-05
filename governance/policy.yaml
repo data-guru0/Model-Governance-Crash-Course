@@ -1,7 +1,7 @@
 # NovaBank Model Governance Policy for Nova Assist.
 # Every gate threshold used by the pipeline lives here. Code reads this file; it never hard-codes
 # a threshold. Changing this file through the console is itself an audited governance action.
-version: "1.0"
+version: "1.2"
 owner: NovaBank Model Risk Committee
 
 registry:
